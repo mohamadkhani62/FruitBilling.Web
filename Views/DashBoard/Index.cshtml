@@ -1,0 +1,260 @@
+﻿@model DashboardPageModel
+@{
+    ViewData["Title"] = "داشبورد آماری";
+    var charts = Model.Tabs.SelectMany(t => t.Blocks).Where(b => b.Chart != null).Select(b => b.Chart).ToList();
+    var firstTab = true;
+}
+<style>
+    body { direction: rtl; font-family: Tahoma; }
+    .dash-kpi { border-radius: 10px; border: 1px solid #e3e6ea; padding: 12px 14px; background: #fff; height: 100%; border-right: 5px solid #0d6efd; }
+    .dash-kpi.k-success { border-right-color: #198754; }
+    .dash-kpi.k-info { border-right-color: #0dcaf0; }
+    .dash-kpi.k-warning { border-right-color: #ffc107; }
+    .dash-kpi.k-danger { border-right-color: #dc3545; }
+    .dash-kpi.k-secondary { border-right-color: #6c757d; }
+    .dash-kpi .t { font-size: 12px; color: #6c757d; }
+    .dash-kpi .v { font-size: 20px; font-weight: bold; }
+    .dash-kpi .s { font-size: 12px; color: #6c757d; }
+    .dash-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 18px 0 12px; }
+    .dash-tabs button { border: 1px solid #ced4da; background: #fff; border-radius: 20px; padding: 5px 14px; font-size: 14px; }
+    .dash-tabs button.active { background: #0d6efd; color: #fff; border-color: #0d6efd; }
+    .dash-chart-wrap { position: relative; height: 340px; background: #fff; border: 1px solid #e3e6ea; border-radius: 8px; padding: 8px; }
+    .dash-table-wrap { max-height: 440px; overflow: auto; background: #fff; border: 1px solid #e3e6ea; border-radius: 8px; }
+    .dash-table th { position: sticky; top: 0; background: #f1f3f5; white-space: nowrap; z-index: 1; }
+    .dash-table td { white-space: nowrap; }
+    .dash-table tbody tr:hover { background-color: #cfe8ff; }
+    .dash-variants button { font-size: 13px; }
+</style>
+
+<h2>📊 داشبورد آماری</h2>
+
+<form method="get" class="card p-3 mb-3" style="background:#f8f9fa;">
+    <div class="row g-2 align-items-end">
+        <div class="col-md-3">
+            <label class="form-label small mb-1">دوره برداشت</label>
+            <select name="cycleId" class="form-select form-select-sm" asp-items="Model.Cycles"></select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small mb-1">محصول</label>
+            <select name="product" class="form-select form-select-sm">
+                <option value="">همه</option>
+                @foreach (var p in Model.ProductNames)
+                {
+                    <option value="@p" selected="@(p == Model.Product)">@p</option>
+                }
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small mb-1">مزرعه</label>
+            <select name="farm" class="form-select form-select-sm">
+                <option value="">همه</option>
+                @foreach (var f in Model.FarmNames)
+                {
+                    <option value="@f" selected="@(f == Model.Farm)">@f</option>
+                }
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small mb-1">از تاریخ</label>
+            <input name="fromDate" value="@Model.FromDate" class="form-control form-control-sm" placeholder="1405/01/01" dir="ltr" />
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small mb-1">تا تاریخ</label>
+            <input name="toDate" value="@Model.ToDate" class="form-control form-control-sm" placeholder="1405/12/29" dir="ltr" />
+        </div>
+        <div class="col-md-1">
+            <button class="btn btn-primary btn-sm w-100">اعمال</button>
+        </div>
+    </div>
+    <div class="small text-muted mt-2">
+        دوره‌ی نمایش: <b>@Model.CycleName</b>
+        @if (Model.InvalidDateRows > 0)
+        {
+            <span class="text-warning"> — @Model.InvalidDateRows برگه تاریخ نامعتبر دارند و در نمودارهای زمانی و فیلتر تاریخ نمی‌آیند.</span>
+        }
+    </div>
+</form>
+
+<div class="row g-2">
+    @foreach (var k in Model.Kpis)
+    {
+        <div class="col-6 col-md-4 col-lg">
+            <div class="dash-kpi k-@k.Css">
+                <div class="t">@k.Title</div>
+                <div class="v">@k.Value</div>
+                <div class="s">@k.Sub</div>
+            </div>
+        </div>
+    }
+</div>
+
+<div class="small text-muted mt-2">
+    همه‌ی وزن‌ها بر اساس باسکول است (برگه‌های دارای قبض)؛ بخشی که هنوز تأیید نشده در کارت‌ها جداگانه ذکر شده است. جابجایی داخلی در خروجی کل و فروش حساب نمی‌شود.
+</div>
+
+<div class="dash-tabs">
+    @foreach (var t in Model.Tabs)
+    {
+        <button type="button" data-tab="@t.Id" class="@(firstTab ? "active" : "")">@t.Title</button>
+        firstTab = false;
+    }
+</div>
+
+@{ firstTab = true; }
+@foreach (var t in Model.Tabs)
+{
+    var seenGroups = new HashSet<string>();
+    <div class="dash-pane" id="pane-@t.Id" style="display:@(firstTab ? "block" : "none")">
+        @if (!string.IsNullOrEmpty(t.Notice))
+        {
+            <div class="alert alert-warning">@t.Notice</div>
+        }
+        @if (!string.IsNullOrEmpty(t.ActionUrl))
+        {
+            <a class="btn btn-sm btn-outline-primary mb-3" href="@t.ActionUrl">✏️ @t.ActionText</a>
+        }
+
+        @foreach (var b in t.Blocks)
+        {
+            if (b.Group != null && seenGroups.Add(b.Group))
+            {
+                <div class="mb-2 dash-variants" data-group="@b.Group">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-variant="daily">روزانه</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-variant="weekly">هفتگی</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-variant="monthly">ماهانه</button>
+                </div>
+            }
+
+            <div class="dash-block mb-4" data-group="@b.Group" data-variant="@b.Variant">
+                @if (b.Chart != null)
+                {
+                    <h6>@b.Chart.Title</h6>
+                    <div class="dash-chart-wrap"><canvas id="chart-@b.Chart.Id"></canvas></div>
+                }
+                @if (b.Table != null)
+                {
+                    <h6>@b.Table.Title</h6>
+                    @if (!string.IsNullOrEmpty(b.Table.Note))
+                    {
+                        <div class="small text-muted mb-1">@b.Table.Note</div>
+                    }
+                    <div class="table-responsive dash-table-wrap">
+                        <table class="table table-sm table-bordered table-hover mb-0 dash-table">
+                            <thead>
+                                <tr>
+                                    @foreach (var c in b.Table.Columns)
+                                    {
+                                        <th>@c</th>
+                                    }
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var row in b.Table.Rows)
+                                {
+                                    <tr>
+                                        @foreach (var cell in row)
+                                        {
+                                            <td>@cell</td>
+                                        }
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+    firstTab = false;
+}
+
+@section Scripts {
+    <script src="~/lib/chartjs/chart.umd.min.js"></script>
+    <script>
+        (function () {
+            var charts = @Json.Serialize(charts);
+            var palette = ['#0d6efd', '#198754', '#fd7e14', '#6f42c1', '#dc3545', '#20c997', '#ffc107', '#0dcaf0', '#6c757d', '#d63384'];
+
+            // ---------- نمودارها ----------
+            charts.forEach(function (c) {
+                var el = document.getElementById('chart-' + c.id);
+                if (!el) return;
+                if (typeof Chart === 'undefined') {
+                    el.parentNode.innerHTML = '<div class="text-muted small p-3">فایل Chart.js پیدا نشد (wwwroot/lib/chartjs/chart.umd.min.js)؛ جدول‌ها کامل نمایش داده می‌شوند.</div>';
+                    return;
+                }
+                var isPie = c.type === 'doughnut';
+                var datasets = c.datasets.map(function (d, i) {
+                    var color = palette[i % palette.length];
+                    var ds = { label: d.label, data: d.data };
+                    if (isPie) {
+                        ds.backgroundColor = c.labels.map(function (_, j) { return palette[j % palette.length]; });
+                    } else {
+                        ds.backgroundColor = color;
+                        ds.borderColor = color;
+                        if (d.type) ds.type = d.type;
+                        if ((d.type || c.type) === 'line') {
+                            ds.fill = false;
+                            ds.tension = 0.25;
+                            ds.pointRadius = 2;
+                        }
+                    }
+                    return ds;
+                });
+                var font = { family: 'Tahoma' };
+                new Chart(el, {
+                    type: c.type,
+                    data: { labels: c.labels, datasets: datasets },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { rtl: true, labels: { font: font } },
+                            tooltip: { rtl: true, titleFont: font, bodyFont: font }
+                        },
+                        scales: isPie ? {} : {
+                            x: { stacked: !!c.stacked, ticks: { font: font } },
+                            y: { stacked: !!c.stacked, beginAtZero: true, title: { display: !!c.unit, text: c.unit || '' }, ticks: { font: font } }
+                        }
+                    }
+                });
+            });
+
+            // ---------- تب‌ها ----------
+            var tabBtns = document.querySelectorAll('.dash-tabs button');
+            function showTab(id) {
+                document.querySelectorAll('.dash-pane').forEach(function (p) {
+                    p.style.display = p.id === 'pane-' + id ? 'block' : 'none';
+                });
+                tabBtns.forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-tab') === id); });
+                try { sessionStorage.setItem('dashTab', id); } catch (e) { }
+                window.dispatchEvent(new Event('resize'));
+            }
+            tabBtns.forEach(function (b) {
+                b.addEventListener('click', function () { showTab(b.getAttribute('data-tab')); });
+            });
+            try {
+                var saved = sessionStorage.getItem('dashTab');
+                if (saved && document.getElementById('pane-' + saved)) showTab(saved);
+            } catch (e) { }
+
+            // ---------- روزانه / هفتگی / ماهانه ----------
+            function applyVariant(group, variant) {
+                document.querySelectorAll('.dash-block[data-group="' + group + '"]').forEach(function (el) {
+                    el.style.display = el.getAttribute('data-variant') === variant ? '' : 'none';
+                });
+                document.querySelectorAll('.dash-variants[data-group="' + group + '"] button').forEach(function (b) {
+                    b.classList.toggle('active', b.getAttribute('data-variant') === variant);
+                });
+                window.dispatchEvent(new Event('resize'));
+            }
+            document.querySelectorAll('.dash-variants').forEach(function (box) {
+                var group = box.getAttribute('data-group');
+                box.querySelectorAll('button').forEach(function (b) {
+                    b.addEventListener('click', function () { applyVariant(group, b.getAttribute('data-variant')); });
+                });
+                applyVariant(group, 'daily');
+            });
+        })();
+    </script>
+}

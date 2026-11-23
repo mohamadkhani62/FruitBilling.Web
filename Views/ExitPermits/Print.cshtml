@@ -1,0 +1,226 @@
+﻿@model FruitBilling.Web.Models.FruitExitPermit
+
+@{
+    ViewData["Title"] = "چاپ برگ خروج";
+    Layout = null;
+}
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="utf-8" />
+    <title>برگ خروج @Model.PermitNumber</title>
+    <style>
+            body {
+                font-family: Tahoma, Arial, sans-serif;
+                margin: 0;
+                padding: 20px;
+                background: #fff;
+            }
+
+            .print-container {
+                max-width: 800px;
+                margin: 0 auto;
+                border: 2px solid #000;
+                padding: 20px;
+            }
+
+            .header {
+                text-align: center;
+                border-bottom: 2px solid #000;
+                padding-bottom: 10px;
+                margin-bottom: 20px;
+            }
+
+                .header h2 {
+                    margin: 0;
+                }
+
+            .info-table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-bottom: 20px;
+            }
+
+                .info-table th, .info-table td {
+                    border: 1px solid #000;
+                    padding: 8px 12px;
+                    font-size: 14px;
+                    text-align: right;
+                }
+
+                .info-table th {
+                    background: #f0f0f0;
+                    width: 20%;
+                }
+
+            .bascul-table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-bottom: 20px;
+            }
+
+                .bascul-table th, .bascul-table td {
+                    border: 1px solid #000;
+                    padding: 6px 10px;
+                    font-size: 13px;
+                    text-align: center;
+                }
+
+                .bascul-table th {
+                    background: #e0e0e0;
+                }
+
+            .signatures {
+                display: flex;
+                justify-content: space-between;
+                margin-top: 50px;
+            }
+
+            .signature-box {
+                text-align: center;
+                width: 30%;
+            }
+
+            .signature-line {
+                border-top: 1px dashed #000;
+                margin-top: 50px;
+                padding-top: 5px;
+            }
+
+            .no-print {
+                text-align: center;
+                margin-top: 30px;
+            }
+
+            .btn-print {
+                padding: 10px 30px;
+                font-size: 16px;
+                cursor: pointer;
+                background: #2ecc71;
+                color: #fff;
+                border: none;
+                border-radius: 5px;
+            }
+
+            @@media print {
+                .no-print {
+                    display: none;
+                }
+
+                body {
+                    padding: 0;
+                }
+
+                .print-container {
+                    border: 2px solid #000;
+                    margin: 0;
+                }
+            }
+    </style>
+</head>
+<body>
+    <div class="print-container">
+        <div class="header">
+            <h2>شرکت کشت و صنعت</h2>
+            <h3>برگ خروج محصول از مزرعه</h3>
+            <p style="margin:5px 0 0 0; font-weight:bold;">شماره برگه: @Model.PermitNumber</p>
+        </div>
+
+        <table class="info-table">
+            <tr>
+                <th>تاریخ</th>
+                <td>@Model.Date</td>
+                <th>مزرعه</th>
+                <td>@Model.Farm?.Name</td>
+            </tr>
+            <tr>
+                <th>قطعه</th>
+                <td>@Model.Plot?.Name</td>
+                <th>نوع محصول</th>
+                <td>@Model.ProductType</td>
+            </tr>
+            <tr>
+                <th>روش برداشت</th>
+                <td>@Model.HarvestMethod</td>
+                <th>پیمانکار برداشت</th>
+                <td>@Model.ContractorName</td>
+            </tr>
+            <tr>
+                <th>تعداد سبد</th>
+                <td>@Model.BasketCount</td>
+                <th>نوع سبد</th>
+                <td>@Model.BasketType</td>
+            </tr>
+            <tr>
+                <th>مقصد</th>
+                <td>@Model.Destination</td>
+                <th>پلاک وسیله نقلیه</th>
+                <td>@Model.VehiclePlate</td>
+            </tr>
+            <tr>
+                <th>نام راننده</th>
+                <td colspan="3">@Model.DriverName</td>
+            </tr>
+        </table>
+
+        <h4 style="text-align:center; margin-bottom:10px;">لیست قبض‌های باسکول</h4>
+        <table class="bascul-table">
+            <thead>
+                <tr>
+                    <th>ردیف</th>
+                    <th>شماره قبض</th>
+                    <th>وزن خالی (kg)</th>
+                    <th>وزن پر (kg)</th>
+                    <th>وزن خالص (kg)</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (Model.BasculTickets != null && Model.BasculTickets.Any())
+                {
+                    int row = 1;
+                    foreach (var ticket in Model.BasculTickets)
+                    {
+                        <tr>
+                            <td>@row</td>
+                            <td>@ticket.TicketNo</td>
+                            <td>@ticket.EmptyWeight.ToString("N0")</td>
+                            <td>@ticket.GrossWeight.ToString("N0")</td>
+                            <td>@ticket.NetWeight.ToString("N0")</td>
+                        </tr>
+                        row++;
+                    }
+                }
+                else
+                {
+                    <tr>
+                        <td colspan="5">هیچ قبضی ثبت نشده است.</td>
+                    </tr>
+                }
+            </tbody>
+            <tfoot>
+                <tr style="background:#f0f0f0; font-weight:bold;">
+                    <td colspan="4" style="text-align:left;">مجموع وزن خالص کل:</td>
+                    <td>@(Model.BasculTickets?.Sum(t => t.NetWeight).ToString("N0") ?? "0")</td>
+                </tr>
+            </tfoot>
+        </table>
+
+        <div class="signatures">
+            <div class="signature-box">
+                <div class="signature-line">مهر و امضای مزرعه</div>
+            </div>
+            <div class="signature-box">
+                <div class="signature-line">مهر و امضای باسکول</div>
+            </div>
+            <div class="signature-box">
+                <div class="signature-line">امضای راننده</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="no-print">
+        <button class="btn-print" onclick="window.print()">🖨️ چاپ برگه</button>
+        <a href="/ExitPermits" style="margin-right:20px; color:#333; text-decoration:none;">بازگشت به لیست</a>
+    </div>
+</body>
+</html>

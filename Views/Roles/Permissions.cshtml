@@ -1,0 +1,192 @@
+﻿@{
+    ViewData["Title"] = "تنظیم دسترسی‌های نقش";
+    var resources = (List<string>)ViewBag.Resources;
+    var permissions = (List<FruitBilling.Web.Models.RolePermission>)ViewBag.Permissions;
+    var roleId = (string)ViewBag.RoleId;
+    var roleName = (string)ViewBag.RoleName;
+}
+
+<style>
+    body {
+        direction: rtl;
+        font-family: Tahoma, sans-serif;
+    }
+
+    .container-custom {
+        max-width: 1200px;
+        margin: 20px auto;
+        padding: 20px;
+        background: #fff;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    }
+
+    .resource-block {
+        background: #f9f9f9;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 20px;
+    }
+
+    .resource-title {
+        font-size: 16px;
+        font-weight: bold;
+        color: #1f4e96;
+        margin-bottom: 10px;
+        border-bottom: 2px solid #eef4ff;
+        padding-bottom: 5px;
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    th, td {
+        border: 1px solid #ccc;
+        padding: 8px;
+        text-align: center;
+        font-size: 13px;
+    }
+
+    th {
+        background: #e3f2fd;
+    }
+
+    .checkbox-large {
+        width: 20px;
+        height: 20px;
+        cursor: pointer;
+    }
+</style>
+
+<div class="container-custom">
+    <h2>🔐 تنظیم دسترسی‌های نقش: <span class="text-primary">@roleName</span></h2>
+
+    @if (TempData["Msg"] != null)
+    {
+        <div class="alert alert-success">@TempData["Msg"]</div>
+    }
+
+    <form asp-action="SavePermissions" method="post">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="roleId" value="@roleId" />
+
+        @{
+            int counter = 0;
+        }
+        @foreach (var resource in resources)
+        {
+            <div class="resource-block">
+                <div class="resource-title">📄 @resource</div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 50%;">نام فیلد</th>
+                            <th style="width: 25%;">مشاهده (View)</th>
+                            <th style="width: 25%;">ویرایش (Edit)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @{
+                            var fields = GetFieldsForResource(resource);
+                        }
+                        @foreach (var field in fields)
+                        {
+                            var perm = permissions.FirstOrDefault(p => p.ResourceName == resource && p.FieldName == field);
+                            var access = perm?.AccessLevel ?? "None";
+                            var canView = access == "View" || access == "Edit";
+                            var canEdit = access == "Edit";
+
+                            <tr>
+                                <td>@GetFieldDisplayName(field)</td>
+                                <td>
+                                    <input type="checkbox" class="checkbox-large chk-view"
+                                           data-counter="@counter"
+                                           checked="@canView"
+                                           onchange="updateAccess(@counter)" />
+                                </td>
+                                <td>
+                                    <input type="checkbox" class="checkbox-large chk-edit"
+                                           data-counter="@counter"
+                                           checked="@canEdit"
+                                           onchange="updateAccess(@counter)" />
+                                </td>
+                            </tr>
+
+                            <!-- فیلدهای مخفی برای ارسال مقادیر به کنترلر -->
+                            <input type="hidden" id="accessLevel_@counter" name="permissions[@counter].AccessLevel" value="@access" />
+                            <input type="hidden" name="permissions[@counter].ResourceName" value="@resource" />
+                            <input type="hidden" name="permissions[@counter].FieldName" value="@field" />
+
+                            counter++;
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        <div class="text-end">
+            <button type="submit" class="btn btn-success btn-lg">💾 ذخیره همه دسترسی‌ها</button>
+            <a asp-action="Index" class="btn btn-secondary btn-lg">بازگشت</a>
+        </div>
+    </form>
+</div>
+
+<script>
+    function updateAccess(counter) {
+        var viewChk = document.querySelector(`.chk-view[data-counter="${counter}"]`);
+        var editChk = document.querySelector(`.chk-edit[data-counter="${counter}"]`);
+        var hidden = document.getElementById(`accessLevel_${counter}`);
+
+        // اگر ویرایش تیک خورد، مشاهده هم باید تیک بخورد
+        if (editChk.checked) {
+            viewChk.checked = true;
+        }
+
+        if (editChk.checked) {
+            hidden.value = "Edit";
+        } else if (viewChk.checked) {
+            hidden.value = "View";
+        } else {
+            hidden.value = "None";
+        }
+    }
+</script>
+
+@functions {
+    List<string> GetFieldsForResource(string resource)
+    {
+        return resource switch
+        {
+            "ExitPermits" => new List<string> {
+                "PermitNumber", "Date", "FarmId", "PlotId", "ProductType", "HarvestMethod",
+                "BasketCount", "BasketType", "Destination", "VehiclePlate", "DriverName",
+                "ContractorName", "Description",
+                "TicketNo_Mزرعه", "EmptyWeight_Mزرعه", "GrossWeight_Mزرعه", "NetWeight_Mزرعه",
+                "Action_Approve" // 🆕
+            },
+            "SortingExitPermits" => new List<string> {
+                "PermitNumber", "Date", "BasketCount", "ProductType", "Grade", "FarmName",
+                "VehiclePlate", "Destination", "SaleType", "Source", "SortingContractor", "MovementType", "Description",
+                "TicketNo_Sort", "EmptyWeight_Sort", "GrossWeight_Sort", "NetWeight_Sort",
+                "Action_Approve" // 🆕
+            },
+            "Farms" => new List<string> { "Name", "Description", "CoordinatesJson", "AreaHectare" },
+            "Plots" => new List<string> { "Name", "CoordinatesJson", "AreaHectare", "SectionCount", "SectionGapMeters" },
+            "Trees" => new List<string> { "Number", "ProductType", "Latitude", "Longitude", "HealthStatus", "Notes" },
+            "Roads" => new List<string> { "RoadType", "Name", "CoordinatesJson", "WidthMeters" },
+            _ => new List<string>()
+        };
+    }
+
+    // 🆕 برای نمایش نام زیبا در جدول
+    string GetFieldDisplayName(string field)
+    {
+        if (field == "Action_Approve") return "✅ اجازه تأیید رکورد";
+        if (field.Contains("_Mزرعه")) return "قبض باسکول (مزرعه) - " + field.Replace("_Mزرعه", "");
+        if (field.Contains("_Sort")) return "قبض باسکول (سورتینگ) - " + field.Replace("_Sort", "");
+        return field;
+    }
+}

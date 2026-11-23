@@ -1,0 +1,224 @@
+﻿@model IEnumerable<FruitBilling.Web.Models.FruitExitPermit>
+@inject FruitBilling.Web.Services.IPermissionService PermissionService
+@inject Microsoft.AspNetCore.Identity.UserManager<Microsoft.AspNetCore.Identity.IdentityUser> UserManager
+
+@{
+    ViewData["Title"] = "مدیریت برگ‌های خروج";
+    var selectedCycleId = ViewBag.SelectedCycleId as int?;
+    var currentCycle = ViewBag.CurrentCycle as FruitBilling.Web.Models.HarvestCycle;
+    var focusId = ViewBag.FocusId as int?;
+
+    var currentUserId = UserManager.GetUserId(User)!;
+    bool canApprove = await PermissionService.CanApproveAsync(currentUserId, "ExitPermits");
+}
+
+<style>
+    body {
+        direction: rtl;
+        font-family: Tahoma, sans-serif;
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+    }
+
+    th, td {
+        border: 1px solid #ccc;
+        padding: 8px;
+        text-align: center;
+    }
+
+    th {
+        background: #f0f0f0;
+        white-space: nowrap;
+    }
+
+    .badge-pending {
+        background: #ff9800;
+        color: white;
+        padding: 3px 8px;
+        border-radius: 4px;
+    }
+
+    .badge-done {
+        background: #4caf50;
+        color: white;
+        padding: 3px 8px;
+        border-radius: 4px;
+    }
+
+    .icon-ticket {
+        font-size: 18px;
+        color: #ff9800;
+        text-decoration: none;
+        cursor: pointer;
+    }
+
+        .icon-ticket:hover {
+            color: #e65100;
+        }
+
+    .focus-row {
+        background-color: #fff3cd !important;
+        transition: background-color 1s ease;
+    }
+
+    .clean-select {
+        background-image: none !important;
+        padding-left: 10px;
+        cursor: pointer;
+    }
+</style>
+
+<h2>🚜 لیست برگ‌های خروج محصول</h2>
+
+@if (TempData["Msg"] != null)
+{
+    <div id="topAlert" class="alert alert-success">@TempData["Msg"]</div>
+}
+@if (TempData["Warning"] != null)
+{
+    <div id="topAlert" class="alert alert-warning" style="font-weight:bold;">⚠️ @TempData["Warning"]</div>
+}
+
+<div class="card mb-4 shadow-sm" style="background: #f8f9fa;">
+    <div class="card-body">
+        <form method="get" class="row align-items-end">
+            <div class="col-md-6">
+                <label class="form-label fw-bold">📅 انتخاب دوره برداشت:</label>
+                <select name="cycleId" asp-items="ViewBag.Cycles" class="form-select clean-select" onchange="this.form.submit()">
+                    <option value="">-- ابتدا یک دوره را انتخاب کنید --</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <button type="submit" class="btn btn-primary">نمایش رکوردها</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+@if (!selectedCycleId.HasValue)
+{
+    <div class="alert alert-info text-center mt-5">
+        <h4>لطفاً یک دوره برداشت را از منوی بالا انتخاب کنید تا رکوردهای آن نمایش داده شود.</h4>
+    </div>
+}
+else
+{
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4 class="text-success">🌱 رکوردهای دوره: @currentCycle?.Name (@currentCycle?.Year)</h4>
+        <div>
+            <a asp-action="Create" asp-route-cycleId="@selectedCycleId" class="btn btn-success">➕ صدور برگ خروج جدید</a>
+            <a asp-action="Export" asp-route-cycleId="@selectedCycleId" class="btn btn-outline-success">📥 خروجی اکسل</a>
+            <a asp-action="Export" class="btn btn-outline-secondary">📥 همه‌ی دوره‌ها</a>
+            <a asp-action="Import" class="btn btn-warning">📤 ورود یکپارچه اکسل</a>
+        </div>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>ردیف</th>
+                <th>تاریخ</th>
+                <th>شماره برگه</th>
+                <th>قبض باسکول</th>
+                <th>مزرعه</th>
+                <th>قطعه</th>
+                <th>محصول / رقم</th>
+                <th>راننده</th>
+                <th>پلاک</th>
+                <th>پیمانکار</th>
+                <th>مقصد</th>
+                <th>وزن خالص (kg)</th>
+                <th>وضعیت</th>
+                <th>عملیات</th>
+            </tr>
+        </thead>
+        <tbody>
+            @{
+                int row = 1;
+            }
+            @if (!Model.Any())
+            {
+                <tr><td colspan="14" class="text-center text-muted">هیچ رکوردی در این دوره ثبت نشده است.</td></tr>
+            }
+            @foreach (var item in Model)
+            {
+                var totalNet = item.BasculTickets?.Sum(t => t.NetWeight) ?? 0;
+                var ticketNos = item.BasculTickets != null && item.BasculTickets.Any()
+                    ? string.Join(" | ", item.BasculTickets.Select(t => t.TicketNo)) : "";
+
+                <tr id="record-@item.Id" class="@(item.Id == focusId ? "focus-row" : "")">
+                    <td>@row</td>
+                    <td>@item.Date</td>
+                    <td><b>@item.PermitNumber</b></td>
+                    <td>
+                        @if (!string.IsNullOrEmpty(ticketNos))
+                        {
+                            <span>@ticketNos</span>
+                        }
+                        else
+                        {
+                            <a asp-action="Weigh" asp-route-id="@item.Id" asp-route-cycleId="@selectedCycleId" class="icon-ticket" title="ثبت توزین">⏳</a>
+                        }
+                    </td>
+                    <td>@item.Farm?.Name</td>
+                    <td>@item.Plot?.Name</td>
+                    <td>@(item.Product?.Name ?? item.ProductType) @(item.Variety != null ? $"- {item.Variety.Name}" : "")</td>
+                    <td>@item.DriverName</td>
+                    <td>@item.VehiclePlate</td>
+                    <td>@item.ContractorName</td>
+                    <td>@item.Destination</td>
+                    <td style="white-space: nowrap;">
+                        @if (item.Status == "در انتظار توزین")
+                        {
+                            <a asp-action="Weigh" asp-route-id="@item.Id" asp-route-cycleId="@selectedCycleId" class="btn btn-warning btn-sm">⚖️ ثبت توزین</a>
+                        }
+                        else
+                        {
+                            <span>@(totalNet > 0 ? totalNet.ToString("N0") : "-")</span>
+                        }
+                    </td>
+                    <td>
+                        @if (item.Status == "در انتظار توزین")
+                        {
+                            <span class="badge-pending">در انتظار توزین</span>
+                        }
+                        else if (item.Status == "توزین شده")
+                        {
+
+                            <span class="badge-done">توزین شده</span>
+                        }
+                        else
+                        {
+
+                            <span class="badge bg-primary text-white">تأیید شده در مقصد</span>
+                        }
+                    </td>
+                    <td style="white-space: nowrap;">
+                        @if (canApprove && item.Status == "توزین شده")
+                        {
+                            <form asp-action="ConfirmArrival" asp-route-id="@item.Id" method="post" style="display:inline" onsubmit="return confirm('آیا رسیدن بار به مقصد را تأیید می‌کنید؟')">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="cycleId" value="@selectedCycleId" />
+                                <button type="submit" class="btn btn-success btn-sm">✅ تأیید</button>
+                            </form>
+                        }
+                        <a asp-action="Print" asp-route-id="@item.Id" class="btn btn-info btn-sm" target="_blank">🖨️</a>
+                        <a asp-action="Edit" asp-route-id="@item.Id" asp-route-cycleId="@selectedCycleId" class="btn btn-primary btn-sm">✏️</a>
+                        <form asp-action="Delete" asp-route-id="@item.Id" method="post" style="display:inline" onsubmit="return confirm('حذف شود؟')">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="cycleId" value="@selectedCycleId" />
+                            <button type="submit" class="btn btn-danger btn-sm">🗑️</button>
+                        </form>
+                    </td>
+                </tr>
+                row++;
+            }
+        </tbody>
+    </table>
+}
+
+<partial name="_RowHighlight" />

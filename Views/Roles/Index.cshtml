@@ -1,0 +1,70 @@
+﻿@model IEnumerable<Microsoft.AspNetCore.Identity.IdentityRole>
+@{
+    ViewData["Title"] = "مدیریت نقش‌ها";
+}
+
+<style>
+    body {
+        direction: rtl;
+        font-family: Tahoma, sans-serif;
+    }
+
+    .card-form {
+        max-width: 1000px;
+        margin: 20px auto;
+        padding: 20px;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        background: #fafafa;
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    th, td {
+        border: 1px solid #ccc;
+        padding: 10px;
+        text-align: center;
+    }
+
+    th {
+        background: #f0f0f0;
+    }
+</style>
+
+<div class="card-form">
+    <h2>🔑 مدیریت نقش‌ها و سطوح دسترسی</h2>
+
+    @if (TempData["Msg"] != null)
+    {
+        <div class="alert alert-success">@TempData["Msg"]</div>
+    }
+
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>نام نقش</th>
+                <th>عملیات</th>
+            </tr>
+        </thead>
+        <tbody>
+            @{
+                int i = 1;
+            }
+            @foreach (var role in Model)
+            {
+                <tr>
+                    <td>@i</td>
+                    <td><b>@role.Name</b></td>
+                    <td>
+                        <a asp-action="Permissions" asp-route-roleId="@role.Id" class="btn btn-primary btn-sm">✏️ تنظیم دسترسی‌ها</a>
+                    </td>
+                </tr>
+                i++;
+            }
+        </tbody>
+    </table>
+</div>

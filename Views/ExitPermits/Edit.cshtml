@@ -1,0 +1,244 @@
+﻿@model FruitBilling.Web.Models.FruitExitPermit
+@inject FruitBilling.Web.Services.IPermissionService PermissionService
+@inject Microsoft.AspNetCore.Identity.UserManager<Microsoft.AspNetCore.Identity.IdentityUser> UserManager
+
+@{
+    ViewData["Title"] = "ویرایش برگه خروج";
+    var currentUserId = UserManager.GetUserId(User)!;
+    var perms = await PermissionService.GetEditableFieldsAsync(currentUserId, "ExitPermits", Model);
+
+    bool isApproved = Model.Status == "تأیید شده در مقصد" || Model.Status == "تأیید فروش";
+    bool isManager = User.IsInRole("Manager");
+    bool lockAll = isApproved && !isManager;
+
+    bool canEditPermitNumber = perms.GetValueOrDefault("PermitNumber") && !lockAll;
+    bool canEditDate = perms.GetValueOrDefault("Date") && !lockAll;
+    bool canEditBasketCount = perms.GetValueOrDefault("BasketCount") && !lockAll;
+    bool canEditProduct = perms.GetValueOrDefault("ProductType") && !lockAll;
+    bool canEditHarvest = perms.GetValueOrDefault("HarvestMethod") && !lockAll;
+    bool canEditBasketType = perms.GetValueOrDefault("BasketType") && !lockAll;
+    bool canEditDestination = perms.GetValueOrDefault("Destination") && !lockAll;
+    bool canEditVehicle = perms.GetValueOrDefault("VehiclePlate") && !lockAll;
+    bool canEditDriver = perms.GetValueOrDefault("DriverName") && !lockAll;
+    bool canEditContractor = perms.GetValueOrDefault("ContractorName") && !lockAll;
+    bool canEditDesc = perms.GetValueOrDefault("Description") && !lockAll;
+
+    bool canManageTickets = (perms.GetValueOrDefault("TicketNo_Mزرعه") || perms.GetValueOrDefault("EmptyWeight_Mزرعه") || perms.GetValueOrDefault("GrossWeight_Mزرعه")) && !lockAll;
+}
+
+<style>
+    body {
+        direction: rtl;
+        font-family: Tahoma, sans-serif;
+    }
+
+    .card-form {
+        max-width: 1000px;
+        margin: 20px auto;
+        padding: 20px;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        background: #fafafa;
+    }
+
+    .form-label {
+        font-weight: bold;
+        font-size: 13px;
+    }
+
+    .readonly-field {
+        background-color: #e9ecef !important;
+        cursor: not-allowed;
+    }
+
+    .section-title {
+        font-size: 14px;
+        font-weight: bold;
+        color: #0d47a1;
+        border-bottom: 2px solid #bbdefb;
+        padding-bottom: 5px;
+        margin-bottom: 15px;
+        margin-top: 20px;
+    }
+</style>
+
+<h2 style="text-align:center;">✏️ ویرایش برگه خروج محصول</h2>
+
+@if (TempData["Msg"] != null)
+{
+    <div class="alert alert-success">@TempData["Msg"]</div>
+}
+@if (TempData["Warning"] != null)
+{
+    <div class="alert alert-warning">@TempData["Warning"]</div>
+}
+@if (isApproved)
+{
+    <div class="alert alert-info text-center">
+        ✅ این برگه تأیید شده است.
+        @if (!isManager)
+        {
+            <span>فقط مدیر می‌تواند آن را تغییر دهد.</span>
+        }
+    </div>
+}
+
+<div class="card-form">
+    <form asp-action="Edit" method="post">
+        @Html.AntiForgeryToken()
+        <input type="hidden" asp-for="Id" />
+        <input type="hidden" asp-for="Status" />
+        <input type="hidden" asp-for="CreatedAt" />
+        <input type="hidden" asp-for="HarvestCycleId" />
+        <input type="hidden" name="cycleId" value="@ViewBag.ReturnCycleId" />
+
+        <div asp-validation-summary="All" class="text-danger mb-3"></div>
+
+        <div class="section-title">📄 اطلاعات برگه</div>
+        <div class="row">
+            <div class="col-md-4 mb-3">
+                <label asp-for="PermitNumber" class="form-label">شماره برگ خروج *</label>
+                <input asp-for="PermitNumber" class="form-control @(canEditPermitNumber ? "" : "readonly-field")" readonly="@(!canEditPermitNumber)" required />
+            </div>
+            <div class="col-md-4 mb-3">
+                <label asp-for="Date" class="form-label"></label>
+                <input asp-for="Date" class="form-control @(canEditDate ? "" : "readonly-field")" readonly="@(!canEditDate)" />
+            </div>
+            <div class="col-md-4 mb-3">
+                <label asp-for="BasketCount" class="form-label"></label>
+                <input asp-for="BasketCount" class="form-control @(canEditBasketCount ? "" : "readonly-field")" readonly="@(!canEditBasketCount)" type="number" />
+            </div>
+        </div>
+
+        <div class="section-title">🌾 مبدا و محصول</div>
+        <div class="row">
+            <div class="col-md-4 mb-3">
+                <label class="form-label text-primary">محصول / رقم</label>
+                <select asp-for="VarietyId" asp-items="ViewBag.VarietyList" class="form-select @(canEditProduct ? "border-primary" : "readonly-field")" disabled="@(!canEditProduct)">
+                    <option value="">-- انتخاب رقم --</option>
+                </select>
+            </div>
+            <div class="col-md-4 mb-3">
+                <label asp-for="HarvestMethod" class="form-label"></label>
+                <input asp-for="HarvestMethod" class="form-control @(canEditHarvest ? "" : "readonly-field")" readonly="@(!canEditHarvest)" />
+            </div>
+            <div class="col-md-4 mb-3">
+                <label asp-for="BasketType" class="form-label"></label>
+                <input asp-for="BasketType" class="form-control @(canEditBasketType ? "" : "readonly-field")" readonly="@(!canEditBasketType)" />
+            </div>
+            <div class="col-md-4 mb-3">
+                <label asp-for="ContractorName" class="form-label"></label>
+                <input asp-for="ContractorName" class="form-control @(canEditContractor ? "" : "readonly-field")" readonly="@(!canEditContractor)" />
+            </div>
+            @if (!canEditProduct)
+            {
+                <input type="hidden" asp-for="VarietyId" />
+            }
+        </div>
+
+        <div class="section-title">🚛 حمل و مقصد</div>
+        <div class="row">
+            <div class="col-md-3 mb-3">
+                <label asp-for="Destination" class="form-label">مقصد</label>
+                <input asp-for="Destination" class="form-control @(canEditDestination ? "" : "readonly-field")" readonly="@(!canEditDestination)" />
+            </div>
+            <div class="col-md-3 mb-3">
+                <label asp-for="VehiclePlate" class="form-label"></label>
+                <input asp-for="VehiclePlate" class="form-control @(canEditVehicle ? "" : "readonly-field")" readonly="@(!canEditVehicle)" />
+            </div>
+            <div class="col-md-3 mb-3">
+                <label asp-for="DriverName" class="form-label"></label>
+                <input asp-for="DriverName" class="form-control @(canEditDriver ? "" : "readonly-field")" readonly="@(!canEditDriver)" />
+            </div>
+            <div class="col-md-3 mb-3">
+                <label asp-for="Description" class="form-label"></label>
+                <input asp-for="Description" class="form-control @(canEditDesc ? "" : "readonly-field")" readonly="@(!canEditDesc)" />
+            </div>
+        </div>
+
+        <div class="text-end mt-3">
+            <button type="submit" class="btn btn-primary" disabled="@(lockAll && !isManager)">💾 ذخیره تغییرات</button>
+            <a asp-action="Index" asp-route-cycleId="@ViewBag.ReturnCycleId" asp-route-focusId="@Model.Id" class="btn btn-secondary">بازگشت</a>
+        </div>
+    </form>
+
+    @if (Model.BasculTickets != null && Model.BasculTickets.Any())
+    {
+        <div class="mt-5 border-top pt-4">
+            <h4>⚖️ قبض‌های باسکول ثبت شده</h4>
+            <table class="table table-bordered text-center mt-3">
+                <thead class="table-light">
+                    <tr><th>#</th><th>شماره قبض</th><th>وزن خالی</th><th>وزن پر</th><th>وزن خالص</th><th>عملیات</th></tr>
+                </thead>
+                <tbody>
+                    @{
+                        int tIdx = 1;
+                    }
+                    @foreach (var ticket in Model.BasculTickets)
+                    {
+                        <tr>
+                            <td>@tIdx</td>
+                            <td>@ticket.TicketNo</td>
+                            <td>@ticket.EmptyWeight.ToString("N0")</td>
+                            <td>@ticket.GrossWeight.ToString("N0")</td>
+                            <td>@ticket.NetWeight.ToString("N0")</td>
+                            <td style="white-space: nowrap;">
+                                @if (canManageTickets)
+                                {
+                                    <a asp-action="EditTicket" asp-route-id="@ticket.Id" asp-route-permitId="@Model.Id" asp-route-cycleId="@ViewBag.ReturnCycleId" class="btn btn-warning btn-sm">✏️ ویرایش</a>
+                                    @if (Model.BasculTickets.Count > 1)
+                                    {
+                                        <form asp-action="DeleteTicket" asp-route-id="@ticket.Id" asp-route-permitId="@Model.Id" method="post" style="display:inline" onsubmit="return confirm('حذف شود؟')">
+                                            @Html.AntiForgeryToken()
+                                            <input type="hidden" name="cycleId" value="@ViewBag.ReturnCycleId" />
+                                            <button type="submit" class="btn btn-danger btn-sm">🗑️ حذف</button>
+                                        </form>
+                                    }
+                                }
+                                else
+                                {
+                                    <span class="text-muted">غیرقابل ویرایش</span>
+                                }
+                            </td>
+                        </tr>
+                        tIdx++;
+                    }
+                </tbody>
+                <tfoot>
+                    <tr style="background:#d4edda; font-weight:bold;">
+                        <td colspan="4" style="text-align:left;">مجموع وزن خالص کل:</td>
+                        <td colspan="2">@Model.BasculTickets.Sum(t => t.NetWeight).ToString("N0") کیلوگرم</td>
+                    </tr>
+                </tfoot>
+            </table>
+
+            @if (canManageTickets)
+            {
+                <div class="mt-4 p-3 bg-light rounded border border-success">
+                    <h5 class="text-success">➕ افزودن قبض باسکول جدید</h5>
+                    <form asp-action="AddTicket" method="post">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="permitId" value="@Model.Id" />
+                        <input type="hidden" name="cycleId" value="@ViewBag.ReturnCycleId" />
+                        <div class="row align-items-end">
+                            <div class="col-md-3 mb-2"><input name="ticketNo" class="form-control" required placeholder="شماره قبض" /></div>
+                            <div class="col-md-2 mb-2"><input name="emptyWeight" id="newEmptyWeight" class="form-control" type="number" required placeholder="وزن خالی" oninput="calcNewNet()" /></div>
+                            <div class="col-md-2 mb-2"><input name="grossWeight" id="newGrossWeight" class="form-control" type="number" required placeholder="وزن پر" oninput="calcNewNet()" /></div>
+                            <div class="col-md-2 mb-2"><input id="newNetWeight" class="form-control" type="number" readonly style="background:#e9ecef;" placeholder="وزن خالص" /></div>
+                            <div class="col-md-3 mb-2"><button type="submit" class="btn btn-success w-100">💾 ثبت قبض</button></div>
+                        </div>
+                    </form>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+<script>
+    function calcNewNet() {
+        var empty = parseInt(document.getElementById('newEmptyWeight').value) || 0;
+        var gross = parseInt(document.getElementById('newGrossWeight').value) || 0;
+        var netInput = document.getElementById('newNetWeight');
+        netInput.value = (gross > empty) ? (gross - empty) : '';
+    }
+</script>

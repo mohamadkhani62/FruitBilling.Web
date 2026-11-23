@@ -1,0 +1,47 @@
+﻿@model YieldEstimate
+@{
+    ViewData["Title"] = "ویرایش برآورد";
+    var estText = Model.EstimatedKg.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+}
+<style>
+    body { direction: rtl; font-family: Tahoma; }
+</style>
+
+<h2>✏️ ویرایش برآورد تولید</h2>
+
+@if (TempData["Warning"] != null)
+{
+    <div class="alert alert-warning">@TempData["Warning"]</div>
+}
+
+<form asp-action="Edit" asp-route-id="@Model.Id" method="post" class="card p-4" style="max-width:700px;">
+    @Html.AntiForgeryToken()
+
+    <div class="mb-3">
+        <label class="form-label">دوره برداشت</label>
+        <select name="harvestCycleId" class="form-select" asp-items="(SelectList)ViewBag.Cycles"></select>
+    </div>
+    <div class="mb-3">
+        <label class="form-label">رقم</label>
+        <select name="varietyId" class="form-select" asp-items="(List<SelectListItem>)ViewBag.Varieties" required></select>
+    </div>
+    <div class="mb-3">
+        <label class="form-label">قطعه (اختیاری)</label>
+        <select name="plotId" class="form-select" asp-items="(List<SelectListItem>)ViewBag.Plots">
+            <option value="">-- کل (بدون قطعه) --</option>
+        </select>
+    </div>
+    <div class="mb-3">
+        <label class="form-label">برآورد (کیلوگرم)</label>
+        <input name="estimatedKg" type="number" min="1" step="any" class="form-control" value="@estText" required dir="ltr" />
+    </div>
+    <div class="mb-3">
+        <label class="form-label">یادداشت</label>
+        <input name="note" class="form-control" maxlength="500" value="@Model.Note" />
+    </div>
+
+    <div>
+        <button class="btn btn-primary">💾 ذخیره</button>
+        <a asp-action="Index" asp-route-cycleId="@Model.HarvestCycleId" class="btn btn-secondary">بازگشت</a>
+    </div>
+</form>

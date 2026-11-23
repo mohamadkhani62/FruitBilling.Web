@@ -1,0 +1,117 @@
+﻿@model IEnumerable<Microsoft.AspNetCore.Identity.IdentityUser>
+@{
+    ViewData["Title"] = "مدیریت کاربران";
+    var userRoles = ViewBag.UserRoles as Dictionary<string, List<string>> ?? new();
+}
+
+<style>
+    body {
+        direction: rtl;
+        font-family: Tahoma, sans-serif;
+    }
+
+    .container-custom {
+        max-width: 1200px;
+        margin: 20px auto;
+        padding: 20px;
+        background: #fff;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+    }
+
+    th, td {
+        border: 1px solid #ccc;
+        padding: 10px;
+        text-align: center;
+    }
+
+    th {
+        background: #e3f2fd;
+    }
+
+    .badge-role {
+        display: inline-block;
+        padding: 3px 8px;
+        border-radius: 4px;
+        background: #4caf50;
+        color: white;
+        margin: 2px;
+        font-size: 12px;
+    }
+</style>
+
+<div class="container-custom">
+    <h2>👥 مدیریت کاربران</h2>
+
+    @if (TempData["Msg"] != null)
+    {
+        <div class="alert alert-success">@TempData["Msg"]</div>
+    }
+    @if (TempData["Warning"] != null)
+    {
+        <div class="alert alert-warning">@TempData["Warning"]</div>
+    }
+
+    <div class="d-flex justify-content-between mb-3">
+        <a asp-action="Create" class="btn btn-primary">➕ افزودن کاربر جدید</a>
+        <a asp-controller="Roles" asp-action="Index" class="btn btn-info">🔑 مدیریت نقش‌ها</a>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>نام کاربری</th>
+                <th>نقش‌ها</th>
+                <th>عملیات</th>
+            </tr>
+        </thead>
+        <tbody>
+            @{
+                int i = 1;
+            }
+            @foreach (var user in Model)
+            {
+                var roles = userRoles.ContainsKey(user.Id) ? userRoles[user.Id] : new List<string>();
+                <tr>
+                    <td>@i</td>
+                    <td>@user.UserName</td>
+                    <td>
+                        @if (roles.Any())
+                        {
+                            foreach (var r in roles)
+                            {
+                                <span class="badge-role">@r</span>
+                            }
+                        }
+                        else
+                        {
+
+                            <span class="text-muted">بدون نقش</span>
+                        }
+                    </td>
+                    <td>
+                        <a asp-action="EditRoles" asp-route-id="@user.Id" class="btn btn-primary btn-sm">✏️ نقش‌ها</a>
+                        <a asp-action="EditUsername" asp-route-id="@user.Id" class="btn btn-info btn-sm">📝 تغییر نام کاربری</a>
+                        <a asp-action="ResetPassword" asp-route-id="@user.Id" class="btn btn-warning btn-sm">🔑 تغییر رمز</a>
+                        <a asp-action="ManageImportPermissions" asp-route-id="@user.Id" class="btn btn-dark btn-sm">📤 مجوز اکسل</a>
+                        @if (user.UserName != "admin")
+                        {
+                            <form asp-action="Delete" asp-route-id="@user.Id" method="post" style="display:inline" onsubmit="return confirm('حذف شود؟')">
+                                @Html.AntiForgeryToken()
+                                <button type="submit" class="btn btn-danger btn-sm">🗑️ حذف</button>
+                            </form>
+                        }
+                    </td>
+                </tr>
+                i++;
+            }
+        </tbody>
+    </table>
+</div>

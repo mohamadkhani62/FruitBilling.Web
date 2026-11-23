@@ -1,0 +1,67 @@
+﻿@model IEnumerable<FruitBilling.Web.Models.Farm>
+@{
+    ViewData["Title"] = "مدیریت مزارع";
+}
+
+<style>
+    body {
+        direction: rtl;
+        font-family: Tahoma, sans-serif;
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+    }
+
+    th, td {
+        border: 1px solid #ccc;
+        padding: 8px;
+        text-align: center;
+    }
+
+    th {
+        background: #e3f2fd;
+        color: #0d47a1;
+    }
+</style>
+
+<h2>🌾 مدیریت مزارع</h2>
+
+<a asp-action="Create" class="btn btn-success mb-3">➕ افزودن مزرعه</a>
+<a href="/Home/Map3D" class="btn btn-primary mb-3">🗺️ مشاهده در نقشه سه‌بعدی</a>
+
+<table>
+    <thead>
+        <tr>
+            <th>#</th>
+            <th>نام</th>
+            <th>مساحت (هکتار)</th>
+            <th>توضیحات</th>
+            <th>تاریخ ثبت</th>
+            <th>عملیات</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var farm in Model)
+        {
+            <tr>
+                <td>@farm.Id</td>
+                <td>@farm.Name</td>
+                <td>@(farm.AreaHectare?.ToString("N2") ?? "-")</td>
+                <td>@(farm.Description ?? "-")</td>
+                <td>@farm.CreatedAt.ToString("yyyy/MM/dd")</td>
+                <td>
+                    <a asp-action="Edit" asp-route-id="@farm.Id" class="btn btn-sm btn-warning">ویرایش</a>
+                    <a href="/Home/Map3D?farmId=@farm.Id" class="btn btn-sm btn-info">مشاهده</a>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@if (!Model.Any())
+{
+    <p class="text-muted text-center mt-3">هیچ مزرعه‌ای ثبت نشده است.</p>
+}

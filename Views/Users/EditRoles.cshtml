@@ -1,0 +1,41 @@
+﻿@model FruitBilling.Web.Controllers.EditUserRolesViewModel
+@{
+    ViewData["Title"] = "ویرایش نقش‌های کاربر";
+}
+
+<style>
+    body {
+        direction: rtl;
+        font-family: Tahoma, sans-serif;
+    }
+
+    .card-form {
+        max-width: 600px;
+        margin: 20px auto;
+        padding: 20px;
+        background: #fff;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    }
+</style>
+
+<div class="card-form">
+    <h2>✏️ ویرایش نقش‌های کاربر</h2>
+    <p><strong>کاربر:</strong> @Model.Username</p>
+
+    <form asp-action="EditRoles" method="post">
+        @Html.AntiForgeryToken()
+        <input type="hidden" asp-for="UserId" />
+
+        <div class="mb-3">
+            <label asp-for="SelectedRoles" class="form-label fw-bold">نقش‌ها</label>
+            <select asp-for="SelectedRoles" asp-items="ViewBag.Roles" class="form-select" multiple size="6"></select>
+            <small class="text-muted">برای انتخاب چندتایی، Ctrl را نگه دارید.</small>
+        </div>
+
+        <div class="text-end">
+            <button type="submit" class="btn btn-success">💾 ذخیره تغییرات</button>
+            <a asp-action="Index" class="btn btn-secondary">بازگشت</a>
+        </div>
+    </form>
+</div>

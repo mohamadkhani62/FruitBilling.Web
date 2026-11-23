@@ -1,0 +1,77 @@
+﻿@model FruitBilling.Web.Models.Farm
+
+@{
+    ViewData["Title"] = "افزودن مزرعه";
+}
+
+<style>
+    body {
+        direction: rtl;
+        font-family: Tahoma, sans-serif;
+    }
+
+    .form-card {
+        max-width: 700px;
+        margin: 30px auto;
+        padding: 25px;
+        background: #fff;
+        border: 1px solid #90caf9;
+        border-radius: 10px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+    }
+
+        .form-card h3 {
+            color: #0d47a1;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #bbdefb;
+            padding-bottom: 10px;
+        }
+
+    .form-label {
+        font-weight: bold;
+        font-size: 13px;
+        color: #0d47a1;
+    }
+</style>
+
+<div class="form-card">
+    <h3>➕ افزودن مزرعه جدید</h3>
+
+    <form asp-action="Create" method="post" id="farmForm">
+        @Html.AntiForgeryToken()
+        <div asp-validation-summary="All" class="text-danger mb-3"></div>
+
+        <div class="mb-3">
+            <label asp-for="Name" class="form-label">نام مزرعه *</label>
+            <input asp-for="Name" class="form-control" required placeholder="مثلاً مزرعه شماره ۱" />
+        </div>
+
+        <div class="mb-3">
+            <label asp-for="Description" class="form-label">توضیحات</label>
+            <textarea asp-for="Description" class="form-control" rows="3"></textarea>
+        </div>
+
+        <div class="mb-3">
+            <label asp-for="AreaHectare" class="form-label">مساحت (هکتار)</label>
+            <input asp-for="AreaHectare" class="form-control" type="number" step="0.01" />
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">مختصات مرز (JSON)</label>
+            <textarea id="coordinatesJson" name="CoordinatesJson" class="form-control" rows="4"
+                      placeholder='[{"lat":28.542,"lng":57.854}, {"lat":28.543,"lng":57.855}]'></textarea>
+            <small class="text-muted">می‌توانید مختصات را دستی وارد کنید یا از صفحه نقشه سه‌بعدی مزرعه را رسم کنید.</small>
+        </div>
+
+        <div class="text-end">
+            <button type="submit" class="btn btn-primary">💾 ذخیره</button>
+            <a asp-action="Index" class="btn btn-secondary">بازگشت</a>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+    @{
+        await Html.RenderPartialAsync("_ValidationScriptsPartial");
+    }
+}

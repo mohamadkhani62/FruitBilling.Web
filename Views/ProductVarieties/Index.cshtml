@@ -1,0 +1,78 @@
+﻿@model IEnumerable<FruitBilling.Web.Models.ProductVariety>
+@{
+    ViewData["Title"] = "مدیریت ارقام";
+}
+<style>
+    body {
+        direction: rtl;
+        font-family: Tahoma;
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    th, td {
+        border: 1px solid #ccc;
+        padding: 10px;
+        text-align: center;
+    }
+
+    th {
+        background: #f0f0f0;
+    }
+</style>
+
+<div class="container mt-4" style="max-width: 900px;">
+    <h2>🍊 مدیریت ارقام (واریته‌ها)</h2>
+    @if (TempData["Msg"] != null)
+    {
+        <div class="alert alert-success">@TempData["Msg"]</div>
+    }
+    @if (TempData["Warning"] != null)
+    {
+        <div class="alert alert-warning">@TempData["Warning"]</div>
+    }
+
+    <div class="row mb-3">
+        <div class="col-md-6">
+            <form method="get" class="d-flex">
+                <select name="productId" asp-items="ViewBag.Products" class="form-select me-2">
+                    <option value="">-- همه محصولات --</option>
+                </select>
+                <button type="submit" class="btn btn-secondary">فیلتر</button>
+            </form>
+        </div>
+        <div class="col-md-6 text-end">
+            <a asp-action="Create" class="btn btn-primary">➕ افزودن رقم جدید</a>
+        </div>
+    </div>
+
+    <table>
+        <thead>
+            <tr><th>#</th><th>نام محصول</th><th>نام رقم</th><th>عملیات</th></tr>
+        </thead>
+        <tbody>
+            @{
+                int i = 1;
+            }
+            @foreach (var item in Model)
+            {
+                <tr>
+                    <td>@i</td>
+                    <td>@item.Product?.Name</td>
+                    <td><b>@item.Name</b></td>
+                    <td>
+                        <a asp-action="Edit" asp-route-id="@item.Id" class="btn btn-warning btn-sm">ویرایش</a>
+                        <form asp-action="Delete" asp-route-id="@item.Id" method="post" style="display:inline" onsubmit="return confirm('حذف شود؟')">
+                            @Html.AntiForgeryToken()
+                            <button type="submit" class="btn btn-danger btn-sm">حذف</button>
+                        </form>
+                    </td>
+                </tr>
+                i++;
+            }
+        </tbody>
+    </table>
+</div>

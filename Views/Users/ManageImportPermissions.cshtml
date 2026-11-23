@@ -1,0 +1,45 @@
+﻿@{
+    ViewData["Title"] = "مدیریت مجوز ورود اکسل";
+}
+
+<style>
+    body { direction: rtl; font-family: Tahoma, sans-serif; }
+    .card-form { max-width: 600px; margin: 20px auto; padding: 20px; background: #fff; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+    .permission-item { padding: 15px; background: #f9f9f9; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 12px; }
+</style>
+
+<div class="card-form">
+    <h2>📤 مدیریت مجوز ورود اکسل</h2>
+    <p><strong>کاربر:</strong> @ViewBag.Username</p>
+    <p class="text-muted">این مجوزها مخصوص این کاربر است (نه نقش). فقط برای این شخص قابل اعمال است.</p>
+
+    <form asp-action="ManageImportPermissions" method="post">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="userId" value="@ViewBag.UserId" />
+
+        <div class="permission-item">
+            <div class="form-check">
+                <input type="checkbox" class="form-check-input" id="canImportSorting" name="canImportSorting" value="true" @(ViewBag.SortingExitPermits == true ? "checked" : "") />
+                <label class="form-check-label fw-bold" for="canImportSorting">
+                    📥 اجازه ورود اکسل برگه‌های خروج سورتینگ
+                </label>
+            </div>
+            <small class="text-muted">شامل برگه‌های سورتینگ + قبض‌های باسکول در یک فایل</small>
+        </div>
+
+        <div class="permission-item">
+            <div class="form-check">
+                <input type="checkbox" class="form-check-input" id="canImportFarm" name="canImportFarm" value="true" @(ViewBag.ExitPermits == true ? "checked" : "") />
+                <label class="form-check-label fw-bold" for="canImportFarm">
+                    🚜 اجازه ورود اکسل برگه‌های خروج مزرعه
+                </label>
+            </div>
+            <small class="text-muted">شامل برگه‌های خروج مزرعه + قبض‌های باسکول در یک فایل</small>
+        </div>
+
+        <div class="text-end mt-3">
+            <button type="submit" class="btn btn-success">💾 ذخیره مجوزها</button>
+            <a asp-action="Index" class="btn btn-secondary">بازگشت</a>
+        </div>
+    </form>
+</div>

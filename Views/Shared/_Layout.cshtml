@@ -1,0 +1,156 @@
+﻿<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - شرکت کشت و صنعت</title>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/header.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/FruitBilling.Web.styles.css" asp-append-version="true" />
+</head>
+<body>
+@{
+    var ctrl = (ViewContext.RouteData.Values["controller"]?.ToString() ?? "").ToLowerInvariant();
+    var act = (ViewContext.RouteData.Values["action"]?.ToString() ?? "").ToLowerInvariant();
+    bool isAuth = User.Identity?.IsAuthenticated == true;
+    bool isManager = User.IsInRole("Manager");
+    bool isSales = User.IsInRole("SalesManager");
+    string userName = User.Identity?.Name ?? "";
+    string initial = userName.Length > 0 ? userName.Substring(0, 1).ToUpperInvariant() : "؟";
+    string roleLabel = isManager ? "مدیر" : isSales ? "مدیر فروش" : "کاربر";
+
+    string Active(params string[] names) => names.Contains(ctrl) ? "active" : "";
+
+    bool isMapPage = ctrl == "home" && (act == "map3dviewer" || act == "map3d");
+    string actHome = ctrl == "home" && !isMapPage ? "active" : "";
+    string actDash = Active("dashboard");
+    string actOps = Active("exitpermits", "sortingexitpermits", "fruitrecords");
+    string actFarms = isMapPage ? "active" : Active("farm", "farms", "plots", "treerows", "roads");
+    string actBase = Active("categories", "products", "productvarieties", "harvestcycles", "yieldestimates");
+    string actAdmin = Active("roles", "users");
+}
+    <header class="app-header">
+        <nav class="navbar navbar-expand-lg navbar-dark app-navbar">
+            <div class="container-fluid px-3 px-lg-4">
+
+                <a class="app-brand" asp-area="" asp-controller="Home" asp-action="Index">
+                    <span class="app-brand-logo">🌱</span>
+                    <span class="app-brand-text">
+                        <span class="app-brand-title">شرکت کشت و صنعت</span>
+                        <span class="app-brand-sub">سامانه مدیریت برداشت، سورت و فروش</span>
+                    </span>
+                </a>
+
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#appNav"
+                        aria-controls="appNav" aria-expanded="false" aria-label="منو">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <div class="collapse navbar-collapse" id="appNav">
+                    @if (isAuth)
+                    {
+                        <ul class="navbar-nav app-main-nav">
+                            <li class="nav-item">
+                                <a class="nav-link @actHome" asp-area="" asp-controller="Home" asp-action="Index">🏠 خانه</a>
+                            </li>
+
+                            @if (isManager || isSales)
+                            {
+                                <li class="nav-item">
+                                    <a class="nav-link @actDash" asp-area="" asp-controller="Dashboard" asp-action="Index">📊 داشبورد</a>
+                                </li>
+                            }
+
+                            <li class="nav-item dropdown">
+                                <a class="nav-link dropdown-toggle @actOps" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">🚜 عملیات</a>
+                                <ul class="dropdown-menu dropdown-menu-end">
+                                    <li><a class="dropdown-item" asp-controller="ExitPermits" asp-action="Index">🚛 برگ خروج از مزرعه</a></li>
+                                    <li><a class="dropdown-item" asp-controller="SortingExitPermits" asp-action="Index">📦 خروج سورتینگ</a></li>
+                                    <li><a class="dropdown-item" href="/FruitRecords">🧾 بارنامه‌ها</a></li>
+                                </ul>
+                            </li>
+
+                            <li class="nav-item dropdown">
+                                <a class="nav-link dropdown-toggle @actFarms" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">🗺️ مزارع و نقشه</a>
+                                <ul class="dropdown-menu dropdown-menu-end">
+                                    <li><a class="dropdown-item" href="/Farm">🌾 مدیریت مزارع</a></li>
+                                    <li><a class="dropdown-item" asp-controller="Home" asp-action="Map3DViewer">🌍 نمای سه‌بعدی</a></li>
+                                </ul>
+                            </li>
+
+                            <li class="nav-item dropdown">
+                                <a class="nav-link dropdown-toggle @actBase" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">📚 اطلاعات پایه</a>
+                                <ul class="dropdown-menu dropdown-menu-end">
+                                    <li><a class="dropdown-item" asp-controller="Categories" asp-action="Index">🗂️ گونه‌ها (دسته‌بندی‌ها)</a></li>
+                                    <li><a class="dropdown-item" asp-controller="Products" asp-action="Index">🌱 محصولات</a></li>
+                                    <li><a class="dropdown-item" asp-controller="ProductVarieties" asp-action="Index">🍊 ارقام (واریته‌ها)</a></li>
+                                    <li><a class="dropdown-item" asp-controller="HarvestCycles" asp-action="Index">📅 دوره‌های برداشت</a></li>
+                                    <li><a class="dropdown-item" asp-controller="YieldEstimates" asp-action="Index">🎯 برآورد تولید</a></li>
+                                </ul>
+                            </li>
+
+                            @if (isManager)
+                            {
+                                <li class="nav-item dropdown">
+                                    <a class="nav-link dropdown-toggle @actAdmin" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">⚙️ مدیریت</a>
+                                    <ul class="dropdown-menu dropdown-menu-end">
+                                        <li><a class="dropdown-item" asp-controller="Users" asp-action="Index">👥 مدیریت کاربران</a></li>
+                                        <li><a class="dropdown-item" asp-controller="Roles" asp-action="Index">🔑 مدیریت نقش‌ها</a></li>
+                                    </ul>
+                                </li>
+                            }
+                        </ul>
+
+                        <ul class="navbar-nav app-user-area">
+                            <li class="nav-item dropdown">
+                                <a class="nav-link app-user dropdown-toggle" href="#" id="userMenu" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                    <span class="app-avatar">@initial</span>
+                                    <span class="app-user-meta">
+                                        <span class="app-user-name">@userName</span>
+                                        <span class="app-user-role">@roleLabel</span>
+                                    </span>
+                                </a>
+                                <ul class="dropdown-menu" aria-labelledby="userMenu">
+                                    <li><h6 class="dropdown-header">👤 @userName</h6></li>
+                                    <li><hr class="dropdown-divider" /></li>
+                                    <li>
+                                        <form asp-controller="Account" asp-action="Logout" method="post" class="m-0">
+                                            @Html.AntiForgeryToken()
+                                            <button type="submit" class="dropdown-item text-danger">🚪 خروج از حساب</button>
+                                        </form>
+                                    </li>
+                                </ul>
+                            </li>
+                        </ul>
+                    }
+                    else
+                    {
+                        <ul class="navbar-nav app-user-area">
+                            <li class="nav-item">
+                                <a class="app-login-btn" asp-controller="Account" asp-action="Login">🔐 ورود به سامانه</a>
+                            </li>
+                        </ul>
+                    }
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <div class="container">
+        <main role="main" class="pb-3">
+            @RenderBody()
+        </main>
+    </div>
+
+    <footer class="border-top footer text-muted">
+        <div class="container">
+            &copy; 2026 - FruitBilling.Web - <a asp-area="" asp-controller="Home" asp-action="Privacy">Privacy</a>
+        </div>
+    </footer>
+    <script src="~/lib/jquery/dist/jquery.min.js"></script>
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="~/js/site.js" asp-append-version="true"></script>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

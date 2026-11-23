@@ -1,0 +1,100 @@
+﻿@model FruitBilling.Web.Models.SortingBasculTicket
+@{
+    ViewData["Title"] = "ویرایش قبض باسکول سورتینگ";
+
+    var currentUserId = UserManager.GetUserId(User)!;
+    var perms = await PermissionService.GetEditableFieldsAsync(currentUserId, "SortingExitPermits", new FruitBilling.Web.Models.SortingExitPermit());
+    bool canManage = perms.GetValueOrDefault("TicketNo_Sort") || perms.GetValueOrDefault("EmptyWeight_Sort");
+}
+
+<style>
+    body {
+        direction: rtl;
+        font-family: Tahoma, sans-serif;
+    }
+
+    .card-form {
+        max-width: 600px;
+        margin: 20px auto;
+        padding: 20px;
+        border: 1px solid #ffb74d;
+        border-radius: 8px;
+        background: #fff8e1;
+    }
+
+    .form-label {
+        font-weight: bold;
+        font-size: 13px;
+    }
+
+    .readonly-field {
+        background-color: #e9ecef !important;
+        cursor: not-allowed;
+    }
+</style>
+
+<h2 style="text-align:center; color:#e65100;">⚖️ ویرایش قبض باسکول سورتینگ</h2>
+
+@if (!canManage)
+{
+    <div class="alert alert-danger text-center mt-5" style="max-width: 600px; margin: 0 auto;">
+        <h4>⛔ دسترسی غیرمجاز</h4>
+        <p>شما دسترسی ویرایش قبض باسکول را ندارید.</p>
+        <a asp-action="Edit" asp-route-id="@ViewBag.PermitId" class="btn btn-secondary">بازگشت</a>
+    </div>
+    return;
+}
+
+<div class="card-form">
+    <form asp-action="EditTicket" method="post">
+        @Html.AntiForgeryToken()
+        <input type="hidden" asp-for="Id" />
+        <input type="hidden" asp-for="SortingExitPermitId" />
+        <input type="hidden" asp-for="CreatedAt" />
+        <input type="hidden" name="permitId" value="@ViewBag.PermitId" />
+        <input type="hidden" name="page" value="@ViewBag.ReturnPage" />
+
+        <div asp-validation-summary="All" class="text-danger mb-3"></div>
+
+        <div class="mb-3">
+            <label asp-for="TicketNo" class="form-label">شماره قبض باسکول</label>
+            <input asp-for="TicketNo" class="form-control @(perms.GetValueOrDefault("TicketNo_Sort") ? "" : "readonly-field")" readonly="@(!perms.GetValueOrDefault("TicketNo_Sort"))" required />
+        </div>
+
+        <div class="mb-3">
+            <label asp-for="EmptyWeight" class="form-label">وزن خالی (kg)</label>
+            <input asp-for="EmptyWeight" id="emptyWeight" class="form-control @(perms.GetValueOrDefault("EmptyWeight_Sort") ? "" : "readonly-field")" readonly="@(!perms.GetValueOrDefault("EmptyWeight_Sort"))" type="number" required oninput="calcNet()" />
+        </div>
+
+        <div class="mb-3">
+            <label asp-for="GrossWeight" class="form-label">وزن پر (kg)</label>
+            <input asp-for="GrossWeight" id="grossWeight" class="form-control @(perms.GetValueOrDefault("GrossWeight_Sort") ? "" : "readonly-field")" readonly="@(!perms.GetValueOrDefault("GrossWeight_Sort"))" type="number" required oninput="calcNet()" />
+        </div>
+
+        <div class="mb-3">
+            <label asp-for="NetWeight" class="form-label">وزن خالص (kg)</label>
+            <input asp-for="NetWeight" id="netWeight" class="form-control readonly-field" type="number" readonly />
+        </div>
+
+        <div class="text-end mt-4">
+            <button type="submit" class="btn btn-primary">💾 ذخیره تغییرات</button>
+            <a asp-action="Edit"
+               asp-route-id="@ViewBag.PermitId"
+               asp-route-page="@ViewBag.ReturnPage"
+               asp-route-focusId="@ViewBag.PermitId"
+               class="btn btn-secondary">بازگشت به برگه</a>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+    <script>
+        function calcNet() {
+            const empty = parseInt(document.getElementById('emptyWeight').value) || 0;
+            const gross = parseInt(document.getElementById('grossWeight').value) || 0;
+            const netField = document.getElementById('netWeight');
+            if (gross > empty) netField.value = gross - empty; else netField.value = '';
+        }
+        document.addEventListener("DOMContentLoaded", function () { calcNet(); });
+    </script>
+}

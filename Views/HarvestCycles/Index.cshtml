@@ -1,0 +1,68 @@
+﻿@model IEnumerable<FruitBilling.Web.Models.HarvestCycle>
+@{
+    ViewData["Title"] = "مدیریت دوره‌های برداشت";
+}
+<style>
+    body {
+        direction: rtl;
+        font-family: Tahoma;
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    th, td {
+        border: 1px solid #ccc;
+        padding: 10px;
+        text-align: center;
+    }
+
+    th {
+        background: #f0f0f0;
+    }
+</style>
+
+<div class="container mt-4" style="max-width: 900px;">
+    <h2>📅 مدیریت دوره‌های برداشت</h2>
+    @if (TempData["Msg"] != null)
+    {
+        <div class="alert alert-success">@TempData["Msg"]</div>
+    }
+    @if (TempData["Warning"] != null)
+    {
+        <div class="alert alert-warning">@TempData["Warning"]</div>
+    }
+
+    <a asp-action="Create" class="btn btn-primary mb-3">➕ تعریف دوره جدید</a>
+    <table>
+        <thead>
+            <tr><th>#</th><th>محصول</th><th>عنوان دوره</th><th>سال</th><th>شماره دوره</th><th>بازه زمانی</th><th>عملیات</th></tr>
+        </thead>
+        <tbody>
+            @{
+                int i = 1;
+            }
+            @foreach (var item in Model)
+            {
+                <tr>
+                    <td>@i</td>
+                    <td>@(item.Category?.Name ?? "عمومی")</td>
+                    <td><b>@item.Name</b></td>
+                    <td>@item.Year</td>
+                    <td>@item.CycleNumber</td>
+                    <td>@item.StartDate - @item.EndDate</td>
+                    <td>
+                        <a asp-action="Edit" asp-route-id="@item.Id" class="btn btn-warning btn-sm">ویرایش</a>
+                        <form asp-action="Delete" asp-route-id="@item.Id" method="post" style="display:inline" onsubmit="return confirm('حذف شود؟')">
+                            @Html.AntiForgeryToken()
+                            <button type="submit" class="btn btn-danger btn-sm">حذف</button>
+                        </form>
+                    </td>
+                </tr>
+                i++;
+            }
+        </tbody>
+    </table>
+</div>

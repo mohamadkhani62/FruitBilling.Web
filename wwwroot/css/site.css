@@ -1,0 +1,30 @@
+html {
+  font-size: 14px;
+}
+
+@media (min-width: 768px) {
+  html {
+    font-size: 16px;
+  }
+}
+
+html {
+  position: relative;
+  min-height: 100%;
+}
+
+body {
+  margin-bottom: 40px;
+}
+/* ===== هدر اصلی سامانه ===== */
+.main-header {
+    background: linear-gradient(110deg, #123d30, #1d6048);
+    box-shadow: 0 3px 14px rgba(0, 0, 0, 0.13);
+    position: relative;
+    z-index: 1000;
+}
+
+.main-header .navbar {
+    min-height: 76px;
+    padding: 8px 0;
+}

@@ -1,0 +1,48 @@
+﻿@model List<FruitBilling.Web.Services.SheetImportReport>
+@{
+    var reportController = ViewData["ReportController"] as string ?? "Home";
+}
+<hr />
+<h5>📑 گزارش ورود (به تفکیک تب)</h5>
+@foreach (var rep in Model)
+{
+    if (rep.HasErrors)
+    {
+        <div class="alert alert-danger py-2 mb-2">
+            <b>❌ تب «@rep.SheetName»</b>
+            @if (rep.CycleName != null) { <span> — دوره «@rep.CycleName»</span> }
+            <span> — ثبت نشد.</span>
+            <ul class="mb-0 mt-1" style="font-size: 13px;">
+                @foreach (var e in rep.Errors)
+                {
+                    <li>@e</li>
+                }
+                @if (rep.HiddenErrorCount > 0)
+                {
+                    <li>و @rep.HiddenErrorCount خطای دیگر…</li>
+                }
+            </ul>
+        </div>
+    }
+    else
+    {
+        <div class="alert alert-success py-2 mb-2">
+            <b>✅ تب «@rep.SheetName»</b> — دوره «@rep.CycleName»:
+            @rep.Permits برگه با @rep.Tickets قبض باسکول ثبت شد
+            @if (rep.Duplicates > 0) { <span>(@rep.Duplicates برگه‌ی تکراری نادیده گرفته شد)</span> }
+            @if (rep.CycleId.HasValue)
+            {
+                <a asp-controller="@reportController" asp-action="Index" asp-route-cycleId="@rep.CycleId" class="btn btn-sm btn-outline-success ms-2">مشاهده</a>
+            }
+            @if (rep.Notes.Any())
+            {
+                <ul class="mb-0 mt-1 text-muted" style="font-size: 12px;">
+                    @foreach (var n in rep.Notes)
+                    {
+                        <li>@n</li>
+                    }
+                </ul>
+            }
+        </div>
+    }
+}

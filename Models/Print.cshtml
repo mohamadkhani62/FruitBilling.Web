@@ -1,0 +1,129 @@
+﻿@model FruitBilling.Web.Models.SortingExitPermit
+@{
+    ViewData["Title"] = "چاپ برگ خروج سورتینگ"; Layout = null;
+}
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="utf-8" />
+    <title>برگ خروج @Model.PermitNumber</title>
+    <style>
+            body {
+                font-family: Tahoma, Arial, sans-serif;
+                margin: 0;
+                padding: 20px;
+                background: #fff;
+            }
+
+            .print-container {
+                max-width: 800px;
+                margin: 0 auto;
+                border: 2px solid #000;
+                padding: 20px;
+            }
+
+            .header {
+                text-align: center;
+                border-bottom: 2px solid #000;
+                padding-bottom: 10px;
+                margin-bottom: 20px;
+            }
+
+            .info-table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-bottom: 20px;
+            }
+
+                .info-table th, .info-table td {
+                    border: 1px solid #000;
+                    padding: 8px 12px;
+                    font-size: 14px;
+                    text-align: right;
+                }
+
+                .info-table th {
+                    background: #f0f0f0;
+                    width: 20%;
+                }
+
+            .bascul-table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-bottom: 20px;
+            }
+
+                .bascul-table th, .bascul-table td {
+                    border: 1px solid #000;
+                    padding: 6px 10px;
+                    font-size: 13px;
+                    text-align: center;
+                }
+
+            .no-print {
+                text-align: center;
+                margin-top: 30px;
+            }
+
+            @@media print {
+                .no-print {
+                    display: none;
+                }
+
+                .print-container {
+                    border: 2px solid #000;
+                    margin: 0;
+                }
+            }
+    </style>
+</head>
+<body>
+    <div class="print-container">
+        <div class="header">
+            <h2>شرکت کشت و صنعت</h2>
+            <h3>برگ خروج از سالن سورتینگ</h3>
+            <p style="font-weight:bold;">شماره برگه: @Model.PermitNumber</p>
+        </div>
+
+        <table class="info-table">
+            <tr><th>تاریخ</th><td>@Model.Date</td><th>مزرعه</th><td>@Model.FarmName</td></tr>
+            <tr><th>محصول</th><td>@Model.ProductType</td><th>درجه</th><td>@Model.Grade</td></tr>
+            <tr><th>تعداد سبد</th><td>@Model.BasketCount</td><th>پیمانکار سورت</th><td>@Model.SortingContractor</td></tr>
+            <tr><th>مقصد</th><td>@Model.Destination</td><th>نوع فروش</th><td>@Model.SaleType</td></tr>
+            <tr><th>نوع خروج</th><td colspan="3">@FruitBilling.Web.Models.SortingMovement.ExitLabel(Model.SaleType, Model.MovementType)</td></tr>
+            <tr><th>مبدا</th><td>@Model.Source</td><th>پلاک وسیله</th><td>@Model.VehiclePlate</td></tr>
+            <tr><th>توضیحات</th><td colspan="3">@Model.Description</td></tr>
+        </table>
+
+        <h4 style="text-align:center;">لیست قبض‌های باسکول</h4>
+        <table class="bascul-table">
+            <thead><tr><th>ردیف</th><th>شماره قبض</th><th>وزن خالی</th><th>وزن پر</th><th>وزن خالص</th></tr></thead>
+            <tbody>
+                @if (Model.BasculTickets != null && Model.BasculTickets.Any())
+                {
+                    int row = 1;
+                    foreach (var t in Model.BasculTickets)
+                    {
+                        <tr><td>@row</td><td>@t.TicketNo</td><td>@t.EmptyWeight.ToString("N0")</td><td>@t.GrossWeight.ToString("N0")</td><td>@t.NetWeight.ToString("N0")</td></tr>
+                        row++;
+                    }
+                }
+                else
+                {
+                    <tr><td colspan="5">هنوز توزین نشده است.</td></tr>
+                }
+            </tbody>
+            <tfoot>
+                <tr style="background:#f0f0f0; font-weight:bold;">
+                    <td colspan="4" style="text-align:left;">مجموع وزن خالص:</td>
+                    <td>@(Model.BasculTickets?.Sum(t => t.NetWeight).ToString("N0") ?? "0")</td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+    <div class="no-print">
+        <button onclick="window.print()" style="padding:10px 30px; font-size:16px; cursor:pointer;">🖨️ چاپ</button>
+        <a href="/SortingExitPermits" style="margin-right:20px; color:#333;">بازگشت</a>
+    </div>
+</body>
+</html>

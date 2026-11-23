@@ -1,0 +1,608 @@
+﻿@{
+    ViewData["Title"] = "نمای سه‌بعدی مزارع - شرکت کشت و صنعت";
+}
+
+<style>
+    body {
+        direction: rtl;
+        font-family: Tahoma, sans-serif;
+    }
+
+    #cesiumContainer {
+        width: 100%;
+        height: 80vh;
+        border: 1px solid #555;
+        border-radius: 8px;
+        background: #2b2b2b;
+    }
+
+    .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 12px;
+        background: #3a3a3a;
+        border: 1px solid #555;
+        border-radius: 8px;
+        margin-bottom: 10px;
+        align-items: center;
+    }
+
+        .toolbar button {
+            padding: 8px 14px;
+            border: 1px solid #666;
+            border-radius: 6px;
+            background: #4a4a4a;
+            color: #fff;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+
+            .toolbar button:hover:not(:disabled) {
+                background: #5a5a5a;
+            }
+
+            .toolbar button:disabled {
+                opacity: 0.4;
+                cursor: not-allowed;
+            }
+
+        .toolbar .breadcrumb-trail {
+            margin-right: auto;
+            font-size: 13px;
+            color: #fff;
+            font-weight: bold;
+        }
+
+    #infoPanel {
+        position: absolute;
+        top: 140px;
+        left: 20px;
+        width: 300px;
+        max-height: 400px;
+        overflow-y: auto;
+        background: rgba(50,50,50,0.97);
+        border: 1px solid #666;
+        border-radius: 10px;
+        padding: 15px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        z-index: 100;
+        font-size: 13px;
+        color: #eee;
+        display: none;
+    }
+
+        #infoPanel.show {
+            display: block;
+        }
+
+        #infoPanel h4 {
+            margin: 0 0 10px;
+            color: #fff;
+            border-bottom: 2px solid #666;
+            padding-bottom: 6px;
+        }
+
+        #infoPanel .row {
+            margin-bottom: 6px;
+        }
+
+        #infoPanel .label {
+            color: #aaa;
+        }
+
+        #infoPanel .value {
+            color: #fff;
+            font-weight: bold;
+        }
+
+    #legend {
+        position: absolute;
+        bottom: 20px;
+        right: 20px;
+        background: rgba(50,50,50,0.95);
+        border: 1px solid #666;
+        border-radius: 8px;
+        padding: 10px 14px;
+        font-size: 12px;
+        color: #eee;
+        z-index: 100;
+    }
+
+        #legend .item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin: 3px 0;
+        }
+
+        #legend .swatch {
+            width: 14px;
+            height: 14px;
+            border: 2px solid #fff;
+            border-radius: 3px;
+        }
+</style>
+
+<div class="toolbar">
+    <button id="btnBack" disabled>⬅ بازگشت</button>
+    <button id="btnZoomAll">🔍 نمایش همه</button>
+    <span class="breadcrumb-trail" id="breadcrumb">همه مزارع</span>
+</div>
+
+<div id="infoPanel"></div>
+
+<div id="legend">
+    <div class="item"><div class="swatch" style="background:#4caf50"></div>مزرعه</div>
+    <div class="item"><div class="swatch" style="background:#ff9800"></div>قطعه</div>
+    <div class="item"><div class="swatch" style="background:#2e7d32; border-radius:50%;"></div>درخت</div>
+</div>
+
+<div id="cesiumContainer"></div>
+
+<script src="~/lib/cesium/Cesium.js"></script>
+<link href="~/lib/cesium/Widgets/widgets.css" rel="stylesheet" />
+
+@section Scripts {
+    <script>
+        // ============================================
+        // ۱. توکن Cesium Ion
+        // ============================================
+        Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6IkRIdU50Mjgtd3I5YWFKNUwiLCJqdGkiOiJhNzgzOTg0Mi0wZjAxLTQ0NDAtYjVjYy0xMTQ4NTA0YWJlZDciLCJpZCI6NTI2OTA1LCJzdWIiOiJNb2hhbW1hZGtoYW5pNjIiLCJpc3MiOiJodHRwczovL2FwaS5jZXNpdW0uY29tIiwiYXVkIjoiRGVmYXVsdFRva2VuIiwiaWF0IjoxNzkyNzM1Mzk0fQ.6KZOdIJa0ij7SpR8emMnCoBIjA8F4JIWbE3X41gy_J4';
+
+        // ============================================
+        // ۲. ساخت Viewer — بدون تصاویر، پس‌زمینه خاکستری تیره
+        // ============================================
+        const viewer = new Cesium.Viewer('cesiumContainer', {
+            //terrain: Cesium.Terrain.fromWorldTerrain(),
+            baseLayer: false,
+            baseLayerPicker: false,
+            animation: false,
+            timeline: false,
+            geocoder: false,
+            homeButton: false,
+            sceneModePicker: false,
+            navigationHelpButton: false,
+            fullscreenButton: false,
+            infoBox: false,
+            selectionIndicator: false,
+            skyBox: false,
+            skyAtmosphere: false
+        });
+
+        viewer.scene.backgroundColor = Cesium.Color.fromCssColorString('#2b2b2b');
+        viewer.scene.globe.baseColor = Cesium.Color.fromCssColorString('#4a4a4a');
+        viewer.scene.globe.showGroundAtmosphere = false;
+        viewer.scene.globe.enableLighting = false;
+
+        viewer.camera.flyTo({
+            destination: Cesium.Cartesian3.fromDegrees(57.85472, 28.54222, 5000),
+            orientation: { heading: 0, pitch: Cesium.Math.toRadians(-60) },
+            duration: 0
+        });
+
+        // ============================================
+        // 🆕 ۳. تابع ساخت تصویر برچسب با پشتیبانی کامل RTL (فارسی)
+        // ============================================
+        function createRtlLabelImage(text, options = {}) {
+            const fontSize = options.fontSize || 14;
+            const fontFamily = options.fontFamily || 'Tahoma, Arial, sans-serif';
+            const bgColor = options.bgColor || 'rgba(0,0,0,0.85)';
+            const textColor = options.textColor || '#ffffff';
+
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const fontStr = `bold ${fontSize}px ${fontFamily}`;
+            ctx.font = fontStr;
+
+            // اندازه‌گیری متن برای تعیین ابعاد کانواس
+            const metrics = ctx.measureText(text);
+            const textWidth = metrics.width;
+            const paddingX = 10;
+            const paddingY = 6;
+
+            // پشتیبانی از صفحات رتینا (کیفیت بالا)
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = (textWidth + paddingX * 2) * dpr;
+            canvas.height = (fontSize + paddingY * 2) * dpr;
+
+            ctx.scale(dpr, dpr);
+            ctx.font = fontStr;
+
+            // رسم پس‌زمینه (با گوشه‌های گرد)
+            ctx.fillStyle = bgColor;
+            ctx.beginPath();
+            if (ctx.roundRect) {
+                ctx.roundRect(0, 0, textWidth + paddingX * 2, fontSize + paddingY * 2, 5);
+            } else {
+                ctx.rect(0, 0, textWidth + paddingX * 2, fontSize + paddingY * 2);
+            }
+            ctx.fill();
+
+            // رسم متن به‌صورت راست‌چین
+            ctx.fillStyle = textColor;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.direction = 'rtl'; // 👈 کلید حل مشکل!
+            ctx.fillText(text, (textWidth + paddingX * 2) / 2, (fontSize + paddingY * 2) / 2);
+
+            return canvas.toDataURL();
+        }
+
+        // ============================================
+        // ۴. تابع کمکی — پلی‌گون + مرز سفید
+        // ============================================
+        function addPolygonWithWhiteBorder(positions, fillColor, borderWidth = 4) {
+            const closed = [...positions, positions[0]];
+
+            const fillEntity = viewer.entities.add({
+                polygon: {
+                    hierarchy: positions,
+                    material: fillColor,
+                    heightReference: Cesium.HeightReference.CLAMP_TO_GROUND
+                }
+            });
+
+            const borderEntity = viewer.entities.add({
+                polyline: {
+                    positions: closed,
+                    width: borderWidth,
+                    material: Cesium.Color.WHITE,
+                    clampToGround: true,
+                    arcType: Cesium.ArcType.GEODESIC
+                }
+            });
+
+            const outerBorder = viewer.entities.add({
+                polyline: {
+                    positions: closed,
+                    width: borderWidth + 2,
+                    material: Cesium.Color.WHITE.withAlpha(0.25),
+                    clampToGround: true,
+                    arcType: Cesium.ArcType.GEODESIC
+                }
+            });
+
+            return { fillEntity, borderEntity, outerBorder };
+        }
+
+        // ============================================
+        // ۵. state
+        // ============================================
+        let currentLevel = 'farms';
+        let selectedFarm = null;
+        let selectedPlot = null;
+
+        const farmEntities = [];
+        const plotEntities = [];
+        const treeEntities = [];
+
+        const infoPanel = document.getElementById('infoPanel');
+        const breadcrumb = document.getElementById('breadcrumb');
+        const btnBack = document.getElementById('btnBack');
+
+        function clearEntities(arr) {
+            arr.forEach(e => viewer.entities.remove(e));
+            arr.length = 0;
+        }
+
+        function updateToolbar() {
+            if (currentLevel === 'farms') {
+                breadcrumb.textContent = 'همه مزارع';
+                btnBack.disabled = true;
+            } else if (currentLevel === 'plots') {
+                breadcrumb.textContent = `مزرعه: ${selectedFarm?.name || '?'}`;
+                btnBack.disabled = false;
+            } else if (currentLevel === 'trees') {
+                breadcrumb.textContent = `${selectedFarm?.name || '?'} / ${selectedPlot?.name || '?'}`;
+                btnBack.disabled = false;
+            }
+        }
+
+        // ============================================
+        // ۶. سطح ۱ — همه مزارع + قطعات
+        // ============================================
+        async function loadFarms() {
+            clearEntities(farmEntities);
+            clearEntities(plotEntities);
+            clearEntities(treeEntities);
+            currentLevel = 'farms';
+            selectedFarm = null;
+            selectedPlot = null;
+            infoPanel.classList.remove('show');
+            updateToolbar();
+
+            try {
+                const res = await fetch('/api/farm');
+                if (!res.ok) { console.error('GET /api/farm failed:', res.status); return; }
+                const farms = await res.json();
+                const allPositions = [];
+
+                farms.forEach(f => {
+                    // ---- مزرعه ----
+                    const coords = JSON.parse(f.coordinatesJson || '[]');
+                    if (coords.length >= 3) {
+                        const positions = coords.map(c => Cesium.Cartesian3.fromDegrees(c.lng, c.lat));
+                        allPositions.push(...positions);
+
+                        const { fillEntity, borderEntity, outerBorder } = addPolygonWithWhiteBorder(
+                            positions,
+                            Cesium.Color.GREEN.withAlpha(0.25),
+                            5
+                        );
+
+                        const cx = coords.reduce((s, c) => s + c.lng, 0) / coords.length;
+                        const cy = coords.reduce((s, c) => s + c.lat, 0) / coords.length;
+
+                        // 🆕 استفاده از billboard به‌جای label برای متن فارسی
+                        const labelImg = createRtlLabelImage('🌾 ' + f.name, { fontSize: 14 });
+                        const labelEntity = viewer.entities.add({
+                            position: Cesium.Cartesian3.fromDegrees(cx, cy),
+                            billboard: {
+                                image: labelImg,
+                                verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+                                heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+                                disableDepthTestDistance: Number.POSITIVE_INFINITY,
+                                pixelOffset: new Cesium.Cartesian2(0, -5)
+                            }
+                        });
+
+                        [fillEntity, borderEntity, outerBorder, labelEntity].forEach(e => {
+                            e.farmId = f.id;
+                            e.farmData = f;
+                        });
+                        farmEntities.push(fillEntity, borderEntity, outerBorder, labelEntity);
+                    }
+
+                    // ---- قطعات این مزرعه ----
+                    (f.plots || []).forEach(p => {
+                        const pCoords = JSON.parse(p.coordinatesJson || '[]');
+                        if (pCoords.length < 3) return;
+                        const pPositions = pCoords.map(c => Cesium.Cartesian3.fromDegrees(c.lng, c.lat));
+                        allPositions.push(...pPositions);
+
+                        const { fillEntity, borderEntity, outerBorder } = addPolygonWithWhiteBorder(
+                            pPositions,
+                            Cesium.Color.ORANGE.withAlpha(0.4),
+                            3
+                        );
+
+                        const pcx = pCoords.reduce((s, c) => s + c.lng, 0) / pCoords.length;
+                        const pcy = pCoords.reduce((s, c) => s + c.lat, 0) / pCoords.length;
+
+                        // 🆕 استفاده از billboard به‌جای label
+                        const plotLabelImg = createRtlLabelImage(p.name, { fontSize: 12 });
+                        const labelEntity = viewer.entities.add({
+                            position: Cesium.Cartesian3.fromDegrees(pcx, pcy),
+                            billboard: {
+                                image: plotLabelImg,
+                                verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+                                heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+                                disableDepthTestDistance: Number.POSITIVE_INFINITY,
+                                pixelOffset: new Cesium.Cartesian2(0, -5)
+                            }
+                        });
+
+                        [fillEntity, borderEntity, outerBorder, labelEntity].forEach(e => {
+                            e.plotId = p.id;
+                            e.plotData = p;
+                            e.parentFarmId = f.id;
+                            e.parentFarmData = f;
+                        });
+                        plotEntities.push(fillEntity, borderEntity, outerBorder, labelEntity);
+                    });
+                });
+
+                if (allPositions.length > 0) {
+                    viewer.camera.flyTo({
+                        destination: viewer.camera.getRectangleCameraCoordinates(
+                            Cesium.Rectangle.fromCartesianArray(allPositions)
+                        ),
+                        duration: 1.5
+                    });
+                }
+            } catch (e) { console.error('loadFarms error:', e); }
+        }
+
+        // ============================================
+        // ۷. سطح ۲ — مزرعه انتخابی
+        // ============================================
+        async function loadPlotsForFarm(farm) {
+            clearEntities(farmEntities);
+            clearEntities(plotEntities);
+            clearEntities(treeEntities);
+            currentLevel = 'plots';
+            selectedFarm = farm;
+            selectedPlot = null;
+            infoPanel.classList.remove('show');
+            updateToolbar();
+
+            const farmCoords = JSON.parse(farm.coordinatesJson || '[]');
+            if (farmCoords.length < 3) return;
+            const farmPositions = farmCoords.map(c => Cesium.Cartesian3.fromDegrees(c.lng, c.lat));
+
+            const { fillEntity: ff, borderEntity: fb, outerBorder: fo } = addPolygonWithWhiteBorder(
+                farmPositions,
+                Cesium.Color.GREEN.withAlpha(0.15),
+                5
+            );
+            farmEntities.push(ff, fb, fo);
+
+            const allPositions = [...farmPositions];
+
+            (farm.plots || []).forEach(p => {
+                const coords = JSON.parse(p.coordinatesJson || '[]');
+                if (coords.length < 3) return;
+                const positions = coords.map(c => Cesium.Cartesian3.fromDegrees(c.lng, c.lat));
+                allPositions.push(...positions);
+
+                const { fillEntity, borderEntity, outerBorder } = addPolygonWithWhiteBorder(
+                    positions,
+                    Cesium.Color.ORANGE.withAlpha(0.4),
+                    4
+                );
+
+                const cx = coords.reduce((s, c) => s + c.lng, 0) / coords.length;
+                const cy = coords.reduce((s, c) => s + c.lat, 0) / coords.length;
+
+                // 🆕 استفاده از billboard
+                const plotLabelImg = createRtlLabelImage(p.name, { fontSize: 13 });
+                const labelEntity = viewer.entities.add({
+                    position: Cesium.Cartesian3.fromDegrees(cx, cy),
+                    billboard: {
+                        image: plotLabelImg,
+                        verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+                        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+                        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+                        pixelOffset: new Cesium.Cartesian2(0, -5)
+                    }
+                });
+
+                [fillEntity, borderEntity, outerBorder, labelEntity].forEach(e => {
+                    e.plotId = p.id;
+                    e.plotData = p;
+                });
+                plotEntities.push(fillEntity, borderEntity, outerBorder, labelEntity);
+            });
+
+            if (allPositions.length > 0) {
+                viewer.camera.flyTo({
+                    destination: viewer.camera.getRectangleCameraCoordinates(
+                        Cesium.Rectangle.fromCartesianArray(allPositions)
+                    ),
+                    duration: 1.5
+                });
+            }
+        }
+
+        // ============================================
+        // ۸. سطح ۳ — درختان
+        // ============================================
+        async function loadTreesForPlot(plot) {
+            clearEntities(treeEntities);
+            currentLevel = 'trees';
+            selectedPlot = plot;
+            infoPanel.classList.remove('show');
+            updateToolbar();
+
+            const plotCoords = JSON.parse(plot.coordinatesJson || '[]');
+            const allPositions = plotCoords.map(c => Cesium.Cartesian3.fromDegrees(c.lng, c.lat));
+
+            try {
+                const res = await fetch(`/api/farm/plot/${plot.id}/rows`);
+                if (!res.ok) { console.error('rows failed:', res.status); return; }
+                const rows = await res.json();
+
+                rows.forEach(row => {
+                    (row.trees || []).forEach(tree => {
+                        const pos = Cesium.Cartesian3.fromDegrees(tree.longitude, tree.latitude);
+                        allPositions.push(pos);
+
+                        const isSick = tree.healthStatus === 'بیمار';
+                        const isDry = tree.healthStatus === 'خشک';
+                        const color = isSick ? Cesium.Color.RED
+                            : isDry ? Cesium.Color.ORANGE
+                                : Cesium.Color.LIME;
+
+                        const entity = viewer.entities.add({
+                            name: `${tree.productType} #${tree.number}`,
+                            position: pos,
+                            point: {
+                                pixelSize: 11,
+                                color: color,
+                                outlineColor: Cesium.Color.BLACK,
+                                outlineWidth: 2,
+                                heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+                                disableDepthTestDistance: Number.POSITIVE_INFINITY
+                            }
+                        });
+
+                        // برای شماره درخت‌ها (که فقط عدد هستند) از label خود Cesium استفاده می‌کنیم
+                        const treeLabel = viewer.entities.add({
+                            position: pos,
+                            label: {
+                                text: `#${tree.number}`,
+                                font: '10px Tahoma',
+                                showBackground: true,
+                                backgroundColor: Cesium.Color.BLACK.withAlpha(0.8),
+                                fillColor: Cesium.Color.WHITE,
+                                pixelOffset: new Cesium.Cartesian2(0, -15),
+                                disableDepthTestDistance: Number.POSITIVE_INFINITY
+                            }
+                        });
+
+                        entity.treeData = tree;
+                        entity.treeId = tree.id;
+                        treeEntities.push(entity, treeLabel);
+                    });
+                });
+
+                if (allPositions.length > 0) {
+                    viewer.camera.flyTo({
+                        destination: viewer.camera.getRectangleCameraCoordinates(
+                            Cesium.Rectangle.fromCartesianArray(allPositions)
+                        ),
+                        duration: 1.5
+                    });
+                }
+            } catch (e) { console.error('loadTrees error:', e); }
+        }
+
+        // ============================================
+        // ۹. کلیک روی نقشه
+        // ============================================
+        const handler = new Cesium.ScreenSpaceEventHandler(viewer.canvas);
+        handler.setInputAction(function (click) {
+            const picked = viewer.scene.pick(click.position);
+            if (!Cesium.defined(picked) || !picked.id) return;
+            const entity = picked.id;
+
+            if (currentLevel === 'farms') {
+                if (entity.plotId && entity.parentFarmData) {
+                    loadPlotsForFarm(entity.parentFarmData);
+                } else if (entity.farmId && entity.farmData) {
+                    loadPlotsForFarm(entity.farmData);
+                }
+            } else if (currentLevel === 'plots') {
+                if (entity.plotId && entity.plotData) {
+                    loadTreesForPlot(entity.plotData);
+                }
+            } else if (currentLevel === 'trees') {
+                if (entity.treeId && entity.treeData) {
+                    showTreeInfo(entity.treeData);
+                }
+            }
+        }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+
+        // ============================================
+        // ۱۰. پنل اطلاعات
+        // ============================================
+        function showTreeInfo(tree) {
+            infoPanel.innerHTML = `
+                        <h4>🌳 درخت #${tree.number}</h4>
+                        <div class="row"><span class="label">نوع:</span> <span class="value">${tree.productType || '-'}</span></div>
+                        <div class="row"><span class="label">وضعیت:</span> <span class="value">${tree.healthStatus || 'سالم'}</span></div>
+                        <div class="row"><span class="label">عرض:</span> <span class="value">${tree.latitude.toFixed(6)}</span></div>
+                        <div class="row"><span class="label">طول:</span> <span class="value">${tree.longitude.toFixed(6)}</span></div>
+                        <div class="row"><span class="label">توضیحات:</span> <span class="value">${tree.notes || '-'}</span></div>
+                    `;
+            infoPanel.classList.add('show');
+        }
+
+        // ============================================
+        // ۱۱. دکمه‌ها
+        // ============================================
+        btnBack.addEventListener('click', () => {
+            if (currentLevel === 'trees') loadPlotsForFarm(selectedFarm);
+            else if (currentLevel === 'plots') loadFarms();
+        });
+
+        document.getElementById('btnZoomAll').addEventListener('click', () => loadFarms());
+
+        // ============================================
+        // ۱۲. شروع
+        // ============================================
+        loadFarms();
+    </script>
+}

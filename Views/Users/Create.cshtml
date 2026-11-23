@@ -1,0 +1,52 @@
+﻿@model FruitBilling.Web.Controllers.CreateUserViewModel
+@{
+    ViewData["Title"] = "افزودن کاربر جدید";
+}
+
+<style>
+    body {
+        direction: rtl;
+        font-family: Tahoma, sans-serif;
+    }
+
+    .card-form {
+        max-width: 600px;
+        margin: 20px auto;
+        padding: 20px;
+        background: #fff;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    }
+</style>
+
+<div class="card-form">
+    <h2>➕ افزودن کاربر جدید</h2>
+
+    <form asp-action="Create" method="post">
+        @Html.AntiForgeryToken()
+        <div asp-validation-summary="All" class="text-danger mb-3"></div>
+
+        <div class="mb-3">
+            <label asp-for="Username" class="form-label fw-bold"></label>
+            <input asp-for="Username" class="form-control" placeholder="مثلاً admin یا user1" />
+            <span asp-validation-for="Username" class="text-danger small"></span>
+        </div>
+
+        <div class="mb-3">
+            <label asp-for="Password" class="form-label fw-bold"></label>
+            <input asp-for="Password" class="form-control" placeholder="حداقل ۴ کاراکتر" />
+            <span asp-validation-for="Password" class="text-danger small"></span>
+        </div>
+
+        <div class="mb-3">
+            <label asp-for="SelectedRoles" class="form-label fw-bold"></label>
+            <select asp-for="SelectedRoles" asp-items="ViewBag.Roles" class="form-select" multiple size="5"></select>
+            <small class="text-muted">برای انتخاب چندتایی، Ctrl را نگه دارید.</small>
+        </div>
+
+        <div class="text-end">
+            <button type="submit" class="btn btn-success">💾 ذخیره کاربر</button>
+            <a asp-action="Index" class="btn btn-secondary">بازگشت</a>
+        </div>
+    </form>
+</div>

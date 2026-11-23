@@ -1,0 +1,80 @@
+﻿@{
+    int partialFocusId = 0;
+    if (ViewBag.FocusId != null)
+    {
+        int.TryParse(Convert.ToString(ViewBag.FocusId), out partialFocusId);
+    }
+}
+<style>
+    /* رنگ ردیفِ زیر ماوس یا زیر انگشت (روی ردیف فوکوس‌شده هم اثر دارد) */
+    table tbody tr[id^="record-"] {
+        -webkit-tap-highlight-color: rgba(13, 110, 253, 0.15);
+    }
+
+        table tbody tr[id^="record-"]:hover,
+        table tbody tr[id^="record-"].row-touch {
+            background-color: #cfe8ff !important;
+        }
+
+    /* پیام موفقیت/هشدار هنگام اسکرول دیده شود */
+    #topAlert {
+        position: sticky;
+        top: 78px;
+        z-index: 1020;
+    }
+</style>
+<script>
+    (function () {
+        function init() {
+            // ---------- فوکوس روی رکورد ----------
+            var fId = '@partialFocusId';
+            if (fId !== '0') {
+                var el = document.getElementById('record-' + fId);
+                if (el) {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    el.classList.add('focus-row');
+                    setTimeout(function () { el.classList.remove('focus-row'); }, 3000);
+                }
+            }
+
+            // ---------- تغییر رنگ ردیف زیر انگشت (مسیر لمس) ----------
+            var table = document.querySelector('table');
+            if (table) {
+                var current = null;
+                var setRow = function (tr) {
+                    if (current === tr) return;
+                    if (current) current.classList.remove('row-touch');
+                    current = tr;
+                    if (tr) tr.classList.add('row-touch');
+                };
+                var rowAt = function (x, y) {
+                    var target = document.elementFromPoint(x, y);
+                    return target ? target.closest('tbody tr[id^="record-"]') : null;
+                };
+                var onTouch = function (e) {
+                    var t = e.touches && e.touches[0];
+                    if (t) setRow(rowAt(t.clientX, t.clientY));
+                };
+                var onEnd = function () { setTimeout(function () { setRow(null); }, 700); };
+
+                table.addEventListener('touchstart', onTouch, { passive: true });
+                table.addEventListener('touchmove', onTouch, { passive: true });
+                table.addEventListener('touchend', onEnd, { passive: true });
+                table.addEventListener('touchcancel', onEnd, { passive: true });
+            }
+
+            // ---------- محو شدن پیام بعد از چند ثانیه ----------
+            var alertEl = document.getElementById('topAlert');
+            if (alertEl) {
+                setTimeout(function () {
+                    alertEl.style.transition = 'opacity 0.6s';
+                    alertEl.style.opacity = '0';
+                    setTimeout(function () { alertEl.style.display = 'none'; }, 700);
+                }, 6000);
+            }
+        }
+
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+        else init();
+    })();
+</script>

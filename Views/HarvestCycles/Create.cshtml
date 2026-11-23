@@ -1,0 +1,56 @@
+﻿@model FruitBilling.Web.Models.HarvestCycle
+@{
+    ViewData["Title"] = "تعریف دوره برداشت";
+}
+
+<div class="container mt-4" style="max-width: 700px; direction: rtl; font-family: Tahoma;">
+    <h2>📅 تعریف دوره برداشت جدید</h2>
+
+    <form asp-action="Create" method="post" class="card p-4 shadow-sm">
+        @Html.AntiForgeryToken()
+        <div asp-validation-summary="All" class="text-danger"></div>
+
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label asp-for="Name" class="form-label fw-bold"></label>
+                <input asp-for="Name" class="form-control" placeholder="مثلاً دوره اول ۱۴۰۳" />
+                <span asp-validation-for="Name" class="text-danger"></span>
+            </div>
+            <div class="col-md-3 mb-3">
+                <label asp-for="Year" class="form-label fw-bold"></label>
+                <input asp-for="Year" class="form-control" type="number" value="1403" />
+            </div>
+            <div class="col-md-3 mb-3">
+                <label asp-for="CycleNumber" class="form-label fw-bold"></label>
+                <input asp-for="CycleNumber" class="form-control" type="number" min="1" max="3" value="1" />
+            </div>
+
+            <!-- 🆕 انتخاب گونه -->
+            <div class="col-md-12 mb-3">
+                <label asp-for="CategoryId" class="form-label fw-bold">گونه مربوطه</label>
+                <select asp-for="CategoryId" asp-items="ViewBag.Categories" class="form-select">
+                    <option value="">-- انتخاب گونه (مثلاً مرکبات) --</option>
+                </select>
+                <span asp-validation-for="CategoryId" class="text-danger"></span>
+                @if (ViewBag.Categories == null || ((SelectList)ViewBag.Categories).Count() == 0)
+                {
+                    <small class="text-danger">⚠️ هیچ گونه‌ای تعریف نشده. ابتدا از منوی «اطلاعات پایه > گونه‌ها» یک گونه بسازید.</small>
+                }
+            </div>
+
+            <div class="col-md-6 mb-3">
+                <label asp-for="StartDate" class="form-label fw-bold"></label>
+                <input asp-for="StartDate" class="form-control" placeholder="1403/01/01" />
+            </div>
+            <div class="col-md-6 mb-3">
+                <label asp-for="EndDate" class="form-label fw-bold"></label>
+                <input asp-for="EndDate" class="form-control" placeholder="1403/03/31" />
+            </div>
+        </div>
+
+        <div class="text-end">
+            <button type="submit" class="btn btn-success">💾 ذخیره</button>
+            <a asp-action="Index" class="btn btn-secondary">بازگشت</a>
+        </div>
+    </form>
+</div>

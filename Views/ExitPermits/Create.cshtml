@@ -1,0 +1,221 @@
+﻿@model FruitBilling.Web.Models.FruitExitPermit
+@inject FruitBilling.Web.Services.IPermissionService PermissionService
+@inject Microsoft.AspNetCore.Identity.UserManager<Microsoft.AspNetCore.Identity.IdentityUser> UserManager
+
+@{
+    ViewData["Title"] = "صدور برگ خروج";
+
+    // 🆕 گرفتن دسترسی‌های کاربر برای ایجاد (با یک مدل خالی)
+    var currentUserId = UserManager.GetUserId(User)!;
+    var perms = await PermissionService.GetEditableFieldsAsync(currentUserId, "ExitPermits", new FruitExitPermit());
+
+    // 🆕 آیا کاربر مجاز به ایجاد است؟
+    bool canCreate = perms.Values.Any(v => v == true);
+
+    if (!canCreate)
+    {
+        <div class="alert alert-danger mt-5 text-center">
+            <h4>⛔ دسترسی غیرمجاز</h4>
+            <p>شما دسترسی ایجاد برگه خروج را ندارید. لطفاً با مدیر سیستم تماس بگیرید.</p>
+            <a href="/ExitPermits" class="btn btn-secondary">بازگشت به لیست</a>
+        </div>
+        return;
+    }
+
+    // میان‌برهای دسترسی برای هر فیلد
+    bool canEditPermitNumber = perms.GetValueOrDefault("PermitNumber");
+    bool canEditDate = perms.GetValueOrDefault("Date");
+    bool canEditBasketCount = perms.GetValueOrDefault("BasketCount");
+    bool canEditProduct = perms.GetValueOrDefault("ProductType"); // این دسترسی روی فیلد رقم و محصول اعمال می‌شود
+    bool canEditHarvest = perms.GetValueOrDefault("HarvestMethod");
+    bool canEditBasketType = perms.GetValueOrDefault("BasketType");
+    bool canEditDestination = perms.GetValueOrDefault("Destination");
+    bool canEditVehicle = perms.GetValueOrDefault("VehiclePlate");
+    bool canEditDriver = perms.GetValueOrDefault("DriverName");
+    bool canEditContractor = perms.GetValueOrDefault("ContractorName");
+    bool canEditDesc = perms.GetValueOrDefault("Description");
+}
+
+<style>
+    body {
+        direction: rtl;
+        font-family: Tahoma, sans-serif;
+    }
+
+    .card-form {
+        max-width: 1000px;
+        margin: 20px auto;
+        padding: 20px;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        background: #fafafa;
+    }
+
+    .form-label {
+        font-weight: bold;
+        font-size: 13px;
+    }
+
+    .readonly-field {
+        background-color: #e9ecef !important;
+        cursor: not-allowed;
+    }
+
+    .section-title {
+        font-size: 14px;
+        font-weight: bold;
+        color: #0d47a1;
+        border-bottom: 2px solid #bbdefb;
+        padding-bottom: 5px;
+        margin-bottom: 15px;
+        margin-top: 20px;
+    }
+</style>
+
+<h2 style="text-align:center;">🚜 صدور برگ خروج محصول</h2>
+
+<div class="card-form">
+    <form asp-action="Create" method="post">
+        @Html.AntiForgeryToken()
+
+        <div asp-validation-summary="All" class="text-danger mb-3"></div>
+
+        <!-- اطلاعات برگه -->
+        <div class="section-title">📄 اطلاعات برگه</div>
+        <div class="row">
+            <div class="col-md-4 mb-3">
+                <label asp-for="PermitNumber" class="form-label">شماره برگ خروج *</label>
+                <input asp-for="PermitNumber" class="form-control @(canEditPermitNumber ? "" : "readonly-field")"
+                       readonly="@(!canEditPermitNumber)" placeholder="مثلاً 12345" maxlength="15" required />
+                <span asp-validation-for="PermitNumber" class="text-danger small"></span>
+            </div>
+            <div class="col-md-4 mb-3">
+                <label asp-for="Date" class="form-label"></label>
+                <input asp-for="Date" class="form-control @(canEditDate ? "" : "readonly-field")"
+                       readonly="@(!canEditDate)" placeholder="1404/08/18" />
+            </div>
+            <div class="col-md-4 mb-3">
+                <label asp-for="BasketCount" class="form-label"></label>
+                <input asp-for="BasketCount" class="form-control @(canEditBasketCount ? "" : "readonly-field")"
+                       readonly="@(!canEditBasketCount)" type="number" />
+            </div>
+        </div>
+
+        <!-- اطلاعات مبدا و محصول -->
+        <div class="section-title">🌾 مبدا و برداشت</div>
+
+        <!-- 🆕 نمایش دوره (قفل شده) -->
+        <div class="alert alert-secondary">
+            دوره برداشت انتخاب شده: <b>@(ViewBag.CurrentCycle?.Name ?? "دوره جاری")</b>
+            <input type="hidden" asp-for="HarvestCycleId" value="@Model.HarvestCycleId" />
+        </div>
+
+        <div class="row">
+            <div class="col-md-4 mb-3">
+                <label class="form-label">مزرعه *</label>
+                <input name="farmNameInput" class="form-control @(canEditProduct ? "" : "readonly-field")"
+                       list="farmList" placeholder="انتخاب یا تایپ نام مزرعه..." readonly="@(!canEditProduct)" required />
+                <datalist id="farmList">
+                    @if (ViewBag.Farms != null)
+                    {
+                        foreach (var farm in ViewBag.Farms as SelectList)
+                        {
+                            <option value="@farm.Text"></option>
+                        }
+                    }
+                </datalist>
+            </div>
+            <div class="col-md-4 mb-3">
+                <label class="form-label">قطعه *</label>
+                <input name="plotNameInput" class="form-control @(canEditProduct ? "" : "readonly-field")"
+                       list="plotList" placeholder="انتخاب یا تایپ نام قطعه..." readonly="@(!canEditProduct)" required />
+                <datalist id="plotList">
+                    @if (ViewBag.Plots != null)
+                    {
+                        foreach (var plot in ViewBag.Plots as SelectList)
+                        {
+                            <option value="@plot.Text"></option>
+                        }
+                    }
+                </datalist>
+            </div>
+
+            <!-- 🆕 فقط یک Dropdown برای انتخاب رقم -->
+            <div class="col-md-4 mb-3">
+                <label asp-for="VarietyId" class="form-label fw-bold text-primary">محصول / رقم *</label>
+                <select asp-for="VarietyId" asp-items="ViewBag.VarietyList" class="form-select @(canEditProduct ? "border-primary" : "readonly-field")"
+                        disabled="@(!canEditProduct)" required>
+                    <option value="">-- انتخاب رقم (مثلاً پرتقال - والنسیا) --</option>
+                </select>
+                <span asp-validation-for="VarietyId" class="text-danger small"></span>
+            </div>
+
+            <div class="col-md-4 mb-3">
+                <label asp-for="HarvestMethod" class="form-label"></label>
+                <input asp-for="HarvestMethod" class="form-control @(canEditHarvest ? "" : "readonly-field")"
+                       readonly="@(!canEditHarvest)" list="harvestList" placeholder="انتخاب یا تایپ..." />
+                <datalist id="harvestList">
+                    <option value="دست چین"></option>
+                    <option value="قیچی چین"></option>
+                </datalist>
+            </div>
+
+            <div class="col-md-4 mb-3">
+                <label asp-for="BasketType" class="form-label"></label>
+                <input asp-for="BasketType" class="form-control @(canEditBasketType ? "" : "readonly-field")"
+                       readonly="@(!canEditBasketType)" list="basketList" placeholder="انتخاب یا تایپ..." />
+                <datalist id="basketList">
+                    <option value="حمال"></option>
+                    <option value="سبد میوه"></option>
+                </datalist>
+            </div>
+            <div class="col-md-4 mb-3">
+                <label asp-for="ContractorName" class="form-label"></label>
+                <input asp-for="ContractorName" class="form-control @(canEditContractor ? "" : "readonly-field")"
+                       readonly="@(!canEditContractor)" />
+            </div>
+        </div>
+
+        <!-- فیلدهای مخفی برای ارسال مقادیر غیرفعال -->
+        @if (!canEditProduct)
+        {
+            <input type="hidden" asp-for="VarietyId" />
+        }
+
+        <!-- اطلاعات حمل و مقصد -->
+        <div class="section-title">🚛 حمل و مقصد</div>
+        <div class="row">
+            <div class="col-md-3 mb-3">
+                <label asp-for="Destination" class="form-label"></label>
+                <input asp-for="Destination" class="form-control @(canEditDestination ? "" : "readonly-field")"
+                       readonly="@(!canEditDestination)" list="destinationList" placeholder="انتخاب یا تایپ..." />
+                <datalist id="destinationList">
+                    <option value="سردخانه"></option>
+                    <option value="سورتینگ"></option>
+                    <option value="بازار"></option>
+                </datalist>
+            </div>
+            <div class="col-md-3 mb-3">
+                <label asp-for="VehiclePlate" class="form-label"></label>
+                <input asp-for="VehiclePlate" class="form-control @(canEditVehicle ? "" : "readonly-field")"
+                       readonly="@(!canEditVehicle)" placeholder="مثلاً 12ع345-67" />
+            </div>
+            <div class="col-md-3 mb-3">
+                <label asp-for="DriverName" class="form-label"></label>
+                <input asp-for="DriverName" class="form-control @(canEditDriver ? "" : "readonly-field")"
+                       readonly="@(!canEditDriver)" />
+            </div>
+            <div class="col-md-3 mb-3">
+                <label asp-for="Description" class="form-label"></label>
+                <input asp-for="Description" class="form-control @(canEditDesc ? "" : "readonly-field")"
+                       readonly="@(!canEditDesc)" />
+            </div>
+        </div>
+
+        <!-- دکمه‌ها -->
+        <div class="text-end mt-4">
+            <button type="submit" class="btn btn-primary">💾 ثبت و صدور برگه</button>
+            <a asp-action="Index" asp-route-cycleId="@Model.HarvestCycleId" class="btn btn-secondary">بازگشت</a>
+        </div>
+    </form>
+</div>

@@ -1,0 +1,206 @@
+﻿@model FruitBilling.Web.Models.SortingExitPermit
+@{
+    ViewData["Title"] = "صدور برگ خروج سورتینگ";
+    var currentUserId = UserManager.GetUserId(User)!;
+    var perms = await PermissionService.GetEditableFieldsAsync(currentUserId, "SortingExitPermits", new FruitBilling.Web.Models.SortingExitPermit());
+
+    bool canCreate = perms.Values.Any(v => v == true);
+    if (!canCreate)
+    {
+        <div class="alert alert-danger mt-5 text-center">
+            <h4>⛔ دسترسی غیرمجاز</h4>
+            <p>شما دسترسی ایجاد برگه خروج سورتینگ را ندارید.</p>
+            <a href="/SortingExitPermits" class="btn btn-secondary">بازگشت</a>
+        </div>
+        return;
+    }
+}
+
+<style>
+    body {
+        direction: rtl;
+        font-family: Tahoma, sans-serif;
+    }
+
+    .card-form {
+        max-width: 1000px;
+        margin: 20px auto;
+        padding: 20px;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        background: #fafafa;
+    }
+
+    .form-label {
+        font-weight: bold;
+        font-size: 13px;
+    }
+
+    .readonly-field {
+        background-color: #e9ecef !important;
+        cursor: not-allowed;
+    }
+
+    .section-title {
+        font-size: 14px;
+        font-weight: bold;
+        color: #0d47a1;
+        border-bottom: 2px solid #bbdefb;
+        padding-bottom: 5px;
+        margin-bottom: 15px;
+        margin-top: 20px;
+    }
+</style>
+
+<h2 style="text-align:center;">🍏 صدور برگ خروج از سورتینگ</h2>
+
+<div class="card-form">
+    <form asp-action="Create" method="post">
+        @Html.AntiForgeryToken()
+        <input type="hidden" asp-for="HarvestCycleId" />
+        <div asp-validation-summary="All" class="text-danger mb-3"></div>
+
+        @{ var currentCycle = ViewBag.CurrentCycle as FruitBilling.Web.Models.HarvestCycle; }
+        @if (currentCycle != null)
+        {
+            <div class="alert alert-success py-2">🌱 دوره برداشت: <b>@currentCycle.Name</b> (@currentCycle.Year)</div>
+        }
+
+        <div class="section-title">📄 اطلاعات برگه</div>
+        <div class="row">
+            <div class="col-md-4 mb-3">
+                <label asp-for="PermitNumber" class="form-label">شماره برگ خروج *</label>
+                <input asp-for="PermitNumber" class="form-control @(perms.GetValueOrDefault("PermitNumber") ? "" : "readonly-field")" readonly="@(!perms.GetValueOrDefault("PermitNumber"))" maxlength="15" required />
+            </div>
+            <div class="col-md-4 mb-3">
+                <label asp-for="Date" class="form-label"></label>
+                <input asp-for="Date" class="form-control @(perms.GetValueOrDefault("Date") ? "" : "readonly-field")" readonly="@(!perms.GetValueOrDefault("Date"))" />
+            </div>
+            <div class="col-md-4 mb-3">
+                <label asp-for="BasketCount" class="form-label"></label>
+                <input asp-for="BasketCount" class="form-control @(perms.GetValueOrDefault("BasketCount") ? "" : "readonly-field")" readonly="@(!perms.GetValueOrDefault("BasketCount"))" type="number" />
+            </div>
+        </div>
+
+        <div class="section-title">🍊 محصول و درجه‌بندی</div>
+        <div class="row">
+            <div class="col-md-3 mb-3">
+                <label asp-for="ProductType" class="form-label"></label>
+                <input asp-for="ProductType" class="form-control @(perms.GetValueOrDefault("ProductType") ? "" : "readonly-field")" readonly="@(!perms.GetValueOrDefault("ProductType"))" list="productList" placeholder="انتخاب یا تایپ..." />
+                <datalist id="productList"><option value="مارس"></option><option value="والنسیا"></option><option value="نارنگی پرل"></option></datalist>
+            </div>
+            <div class="col-md-3 mb-3">
+                <label asp-for="Grade" class="form-label"></label>
+                <select asp-for="Grade" class="form-select @(perms.GetValueOrDefault("Grade") ? "" : "readonly-field")" disabled="@(!perms.GetValueOrDefault("Grade"))">
+                    <option value="">-- انتخاب درجه --</option>
+                    <option value="درجه یک">درجه یک</option>
+                    <option value="درجه دو">درجه دو</option>
+                    <option value="درهم">درهم</option>
+                    <option value="ضایعات">ضایعات</option>
+                </select>
+                @if (!perms.GetValueOrDefault("Grade"))
+                {
+                    <input type="hidden" asp-for="Grade" />
+                }
+            </div>
+            <div class="col-md-3 mb-3">
+                <label asp-for="FarmName" class="form-label"></label>
+                <input asp-for="FarmName" class="form-control @(perms.GetValueOrDefault("FarmName") ? "" : "readonly-field")" readonly="@(!perms.GetValueOrDefault("FarmName"))" placeholder="نام مزرعه..." />
+            </div>
+            <div class="col-md-3 mb-3">
+                <label asp-for="Source" class="form-label"></label>
+                <input asp-for="Source" class="form-control @(perms.GetValueOrDefault("Source") ? "" : "readonly-field")" readonly="@(!perms.GetValueOrDefault("Source"))" placeholder="مبدا..." />
+            </div>
+        </div>
+
+        <div class="section-title">🚛 حمل و مقصد</div>
+        <div class="row">
+            <div class="col-md-3 mb-3">
+                <label asp-for="Destination" class="form-label"></label>
+                <input asp-for="Destination" class="form-control @(perms.GetValueOrDefault("Destination") ? "" : "readonly-field")" readonly="@(!perms.GetValueOrDefault("Destination"))" list="destList" />
+                <datalist id="destList"><option value="سردخانه"></option><option value="بازار"></option></datalist>
+            </div>
+            <div class="col-md-3 mb-3">
+                <label asp-for="SaleType" class="form-label"></label>
+                <select asp-for="SaleType" class="form-select @(perms.GetValueOrDefault("SaleType") ? "" : "readonly-field")" disabled="@(!perms.GetValueOrDefault("SaleType"))">
+                    <option value="">-- انتخاب نوع فروش --</option>
+                    <option value="نقدی">نقدی</option>
+                    <option value="میدان">میدان</option>
+                    <option value="هدیه">هدیه</option>
+                    <option value="جابجایی">جابجایی (انتقال داخلی)</option>
+                </select>
+                @if (!perms.GetValueOrDefault("SaleType"))
+                {
+                    <input type="hidden" asp-for="SaleType" />
+                }
+            </div>
+            <div class="col-md-3 mb-3">
+                @{ var exitAllowed = FruitBilling.Web.Models.SortingMovement.AllowedExitTypes(Model.SaleType); }
+                <label asp-for="MovementType" class="form-label"></label>
+                <select asp-for="MovementType" class="form-select @(perms.GetValueOrDefault("MovementType") ? "" : "readonly-field")" disabled="@(!perms.GetValueOrDefault("MovementType"))">
+                    @if (exitAllowed.Length != 1)
+                    {
+                        <option value="">@(exitAllowed.Length == 0 ? "-- ابتدا نوع فروش را انتخاب کنید --" : "-- انتخاب نوع خروج --")</option>
+                    }
+                    @foreach (var opt in exitAllowed)
+                    {
+                        <option value="@opt">@opt</option>
+                    }
+                </select>
+                @if (!perms.GetValueOrDefault("MovementType"))
+                {
+                    <input type="hidden" asp-for="MovementType" />
+                }
+            </div>
+            <div class="col-md-3 mb-3">
+                <label asp-for="VehiclePlate" class="form-label"></label>
+                <input asp-for="VehiclePlate" class="form-control @(perms.GetValueOrDefault("VehiclePlate") ? "" : "readonly-field")" readonly="@(!perms.GetValueOrDefault("VehiclePlate"))" />
+            </div>
+            <div class="col-md-3 mb-3">
+                <label asp-for="SortingContractor" class="form-label"></label>
+                <input asp-for="SortingContractor" class="form-control @(perms.GetValueOrDefault("SortingContractor") ? "" : "readonly-field")" readonly="@(!perms.GetValueOrDefault("SortingContractor"))" />
+            </div>
+            <div class="col-md-12 mb-3">
+                <label asp-for="Description" class="form-label"></label>
+                <input asp-for="Description" class="form-control @(perms.GetValueOrDefault("Description") ? "" : "readonly-field")" readonly="@(!perms.GetValueOrDefault("Description"))" />
+            </div>
+        </div>
+
+        <div class="text-end mt-4">
+            <button type="submit" class="btn btn-primary">💾 ثبت و صدور برگه</button>
+            <a asp-action="Index" asp-route-cycleId="@Model.HarvestCycleId" class="btn btn-secondary">بازگشت</a>
+        </div>
+    </form>
+</div>
+
+<script>
+    (function () {
+        var map = @Json.Serialize(FruitBilling.Web.Models.SortingMovement.SaleTypes.ToDictionary(s => s, s => FruitBilling.Web.Models.SortingMovement.AllowedExitTypes(s)));
+        var sale = document.querySelector('select[name="SaleType"]');
+        var exit = document.querySelector('select[name="MovementType"]');
+        if (!sale || !exit || exit.disabled) return;
+
+        function sync() {
+            var current = exit.value;
+            var list = map[sale.value] || [];
+            exit.innerHTML = '';
+            if (list.length !== 1) {
+                var ph = document.createElement('option');
+                ph.value = '';
+                ph.textContent = list.length ? '-- انتخاب نوع خروج --' : '-- ابتدا نوع فروش را انتخاب کنید --';
+                exit.appendChild(ph);
+            }
+            list.forEach(function (t) {
+                var o = document.createElement('option');
+                o.value = t;
+                o.textContent = t;
+                exit.appendChild(o);
+            });
+            exit.value = list.indexOf(current) >= 0 ? current : (list.length === 1 ? list[0] : '');
+            exit.required = list.length > 1;
+        }
+
+        sale.addEventListener('change', sync);
+        sync();
+    })();
+</script>

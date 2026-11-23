@@ -1,0 +1,94 @@
+﻿@{
+    ViewData["Title"] = "ورود یکپارچه اکسل برگ خروج از مزرعه";
+    var report = ViewBag.Report as List<FruitBilling.Web.Services.SheetImportReport>;
+    var cycleNames = ViewBag.ImportCycleNames as List<string> ?? new List<string>();
+    var unusable = ViewBag.UnusableCycleNames as List<string> ?? new List<string>();
+    ViewData["ReportController"] = "ExitPermits";
+}
+<style>
+    body {
+        direction: rtl;
+        font-family: Tahoma;
+    }
+</style>
+
+<h2>📤 ورود یکپارچه برگ‌های خروج از مزرعه و قبض‌های باسکول از اکسل</h2>
+
+<div class="card p-4" style="max-width: 900px; margin: 20px auto; background: #fff; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.05);">
+
+    @if (TempData["Warning"] != null)
+    {
+        <div class="alert alert-warning">@TempData["Warning"]</div>
+    }
+
+    @if (unusable.Any())
+    {
+        <div class="alert alert-warning py-2" style="font-size: 13px;">
+            ⚠️ نام این دوره‌ها برای نام تب اکسل مناسب نیست (بیش از ۳۱ کاراکتر یا شامل <span dir="ltr">: \ / ? * [ ]</span>) و تا اصلاح نام، از طریق اکسل قابل ورود نیستند:
+            <b>@string.Join("، ", unusable)</b>
+        </div>
+    }
+
+    <form asp-action="Import" method="post" enctype="multipart/form-data">
+        <div class="mb-3">
+            <label class="form-label fw-bold">انتخاب فایل اکسل (.xlsx)</label>
+            <input type="file" name="file" accept=".xlsx" class="form-control" required />
+        </div>
+
+        <div asp-validation-summary="All" class="text-danger mb-3"></div>
+
+        <button class="btn btn-primary">📤 آپلود و ذخیره</button>
+        <a asp-action="DownloadTemplate" class="btn btn-outline-success">📄 دانلود قالب اکسل</a>
+        <a asp-action="Index" class="btn btn-secondary">بازگشت</a>
+    </form>
+
+    @if (report != null && report.Any())
+    {
+        <partial name="_ImportReport" model="report" />
+    }
+
+    <div class="alert alert-info mt-4" style="font-size: 13px;">
+        <h5>📋 قواعد فایل اکسل:</h5>
+        <ul>
+            <li>فقط فایل <b>.xlsx</b> پذیرفته می‌شود و سطر اول هر تب باید <b>دقیقاً</b> سربرگ‌های جدول زیر (ستون A تا Q) باشد؛ ستون اضافه مجاز نیست.</li>
+            <li><b>نام هر تب باید با نام یک دوره برداشت یکی باشد.</b> می‌توانید چند تب (چند دوره) در یک فایل داشته باشید؛ هر تبِ معتبر در دوره‌ی خودش ثبت می‌شود.
+                تبی که نامش با هیچ دوره‌ای یکی نباشد یا ساختارش نادرست باشد، کلاً ثبت نمی‌شود و بقیه‌ی تب‌ها تأثیری نمی‌گیرند.</li>
+            <li><b>تاریخ</b> باید متن شمسی به شکل <span dir="ltr">1403/05/12</span> باشد. ستون‌های <b>تعداد سبد، وزن خالی و وزن پر</b> فقط عدد صحیح؛ بقیه‌ی ستون‌ها متن (یا عدد صحیح) هستند.</li>
+            <li>هر چند ردیف که <b>شماره برگه</b> و <b>نام مزرعه</b> یکسان داشته باشند، یک برگه با چند قبض هستند (شماره قبض‌ها می‌توانند تکراری باشند). اگر ستون‌های برگه در ردیف‌های بعدی خالی بماند از ردیف اول گرفته می‌شود، ولی مقدار متفاوت خطا است.</li>
+            <li><b>نوع محصول</b> و <b>نام رقم</b> باید قبلاً در بخش محصولات تعریف شده باشند (اگر دوره گونه‌ای دارد، محصول باید در همان گونه باشد) و رقم بدون محصول مجاز نیست. <b>مزرعه و قطعه</b> مثل صدور دستی، اگر وجود نداشته باشند ساخته می‌شوند و در گزارش می‌آیند.</li>
+            <li>برای ثبت قبض، هر سه ستون O و P و Q باید پر باشند و وزن پر از وزن خالی بیشتر باشد. برگه بدون قبض: این سه ستون را خالی بگذارید.</li>
+            <li>شماره برگه برای هر مزرعه یکتاست؛ برگه‌ای که مزرعه و شماره‌اش قبلاً (در هر دوره‌ای) ثبت شده باشد نادیده گرفته می‌شود.</li>
+        </ul>
+
+        @if (cycleNames.Any())
+        {
+            <p class="mb-1"><b>نام تب‌های مجاز (دوره‌های تعریف‌شده):</b></p>
+            <p>@string.Join("، ", cycleNames)</p>
+        }
+
+        <table class="table table-sm table-bordered mt-2">
+            <thead class="table-light">
+                <tr><th>ستون</th><th>عنوان (سربرگ)</th><th>نوع</th><th>الزامی</th></tr>
+            </thead>
+            <tbody>
+                <tr><td>A</td><td>شماره برگ خروج</td><td>متن (حداکثر ۱۵)</td><td>✅ همه‌ی ردیف‌ها</td></tr>
+                <tr><td>B</td><td>تاریخ</td><td>متن شمسی yyyy/MM/dd</td><td>✅</td></tr>
+                <tr><td>C</td><td>نام مزرعه</td><td>متن (حداکثر ۱۰۰)</td><td>✅ همه‌ی ردیف‌ها</td></tr>
+                <tr><td>D</td><td>نام قطعه</td><td>متن (حداکثر ۱۰۰)</td><td>-</td></tr>
+                <tr><td>E</td><td>نوع محصول</td><td>متن (از محصولات تعریف‌شده)</td><td>-</td></tr>
+                <tr><td>F</td><td>نام رقم</td><td>متن (از ارقام همان محصول)</td><td>-</td></tr>
+                <tr><td>G</td><td>روش برداشت</td><td>متن (حداکثر ۵۰)</td><td>-</td></tr>
+                <tr><td>H</td><td>تعداد سبد</td><td>عدد صحیح</td><td>-</td></tr>
+                <tr><td>I</td><td>نوع سبد</td><td>متن (حداکثر ۵۰)</td><td>-</td></tr>
+                <tr><td>J</td><td>مقصد</td><td>متن (حداکثر ۱۰۰)</td><td>-</td></tr>
+                <tr><td>K</td><td>شماره پلاک</td><td>متن (حداکثر ۲۰)</td><td>-</td></tr>
+                <tr><td>L</td><td>نام راننده</td><td>متن (حداکثر ۱۰۰)</td><td>-</td></tr>
+                <tr><td>M</td><td>پیمانکار برداشت</td><td>متن (حداکثر ۱۰۰)</td><td>-</td></tr>
+                <tr><td>N</td><td>توضیحات</td><td>متن (حداکثر ۵۰۰)</td><td>-</td></tr>
+                <tr><td>O</td><td>شماره قبض باسکول</td><td>متن (حداکثر ۳۰)</td><td>با P و Q</td></tr>
+                <tr><td>P</td><td>وزن خالی (kg)</td><td>عدد صحیح</td><td>با O و Q</td></tr>
+                <tr><td>Q</td><td>وزن پر (kg)</td><td>عدد صحیح</td><td>با O و P</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>

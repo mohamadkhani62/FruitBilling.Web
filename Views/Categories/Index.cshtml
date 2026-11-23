@@ -1,0 +1,76 @@
+﻿@model IEnumerable<FruitBilling.Web.Models.Category>
+@{
+    ViewData["Title"] = "مدیریت گونه‌ها";
+}
+<style>
+    body {
+        direction: rtl;
+        font-family: Tahoma, sans-serif;
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    th, td {
+        border: 1px solid #ccc;
+        padding: 10px;
+        text-align: center;
+    }
+
+    th {
+        background: #f0f0f0;
+    }
+</style>
+
+<div class="container mt-4" style="max-width: 900px;">
+    <h2>🗂️ مدیریت گونه‌ها (دسته‌بندی‌ها)</h2>
+
+    @if (TempData["Msg"] != null)
+    {
+        <div class="alert alert-success">@TempData["Msg"]</div>
+    }
+    @if (TempData["Warning"] != null)
+    {
+        <div class="alert alert-warning">@TempData["Warning"]</div>
+    }
+
+    <a asp-action="Create" class="btn btn-primary mb-3">➕ افزودن گونه جدید</a>
+
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>نام گونه</th>
+                <th>توضیحات</th>
+                <th>عملیات</th>
+            </tr>
+        </thead>
+        <tbody>
+            @{
+                int i = 1;
+            }
+            @foreach (var item in Model)
+            {
+                <tr>
+                    <td>@i</td>
+                    <td><b>@item.Name</b></td>
+                    <td>@item.Description</td>
+                    <td>
+                        <a asp-action="Edit" asp-route-id="@item.Id" class="btn btn-warning btn-sm">✏️ ویرایش</a>
+                        <form asp-action="Delete" asp-route-id="@item.Id" method="post" style="display:inline" onsubmit="return confirm('آیا از حذف این گونه مطمئن هستید؟')">
+                            @Html.AntiForgeryToken()
+                            <button type="submit" class="btn btn-danger btn-sm">🗑️ حذف</button>
+                        </form>
+                    </td>
+                </tr>
+                i++;
+            }
+            @if (!Model.Any())
+            {
+                <tr><td colspan="4" class="text-muted text-center">هیچ گونه‌ای تعریف نشده است.</td></tr>
+            }
+        </tbody>
+    </table>
+</div>

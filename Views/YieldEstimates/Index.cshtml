@@ -1,0 +1,113 @@
+﻿@model List<YieldEstimate>
+@{
+    ViewData["Title"] = "برآورد تولید";
+    int cycleId = (int)ViewBag.CycleId;
+    bool isManager = User.IsInRole("Manager");
+}
+<style>
+    body { direction: rtl; font-family: Tahoma; }
+</style>
+
+<h2>🎯 برآورد تولید</h2>
+
+@if (TempData["Msg"] != null)
+{
+    <div class="alert alert-success">@TempData["Msg"]</div>
+}
+@if (TempData["Warning"] != null)
+{
+    <div class="alert alert-warning">@TempData["Warning"]</div>
+}
+
+<form method="get" class="card p-3 mb-3" style="background:#f8f9fa;">
+    <div class="row g-2 align-items-end">
+        <div class="col-md-5">
+            <label class="form-label small mb-1">دوره برداشت</label>
+            <select name="cycleId" class="form-select" asp-items="(SelectList)ViewBag.Cycles" onchange="this.form.submit()"></select>
+        </div>
+        <div class="col-md-2">
+            <a asp-controller="Dashboard" asp-action="Index" asp-route-cycleId="@cycleId" class="btn btn-outline-secondary">بازگشت به داشبورد</a>
+        </div>
+    </div>
+</form>
+
+@if (isManager)
+{
+    <form asp-action="Create" method="post" class="card p-3 mb-3">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="harvestCycleId" value="@cycleId" />
+        <h6>➕ ثبت برآورد جدید برای این دوره</h6>
+        <div class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label small mb-1">رقم</label>
+                <select name="varietyId" class="form-select" asp-items="(List<SelectListItem>)ViewBag.Varieties" required>
+                    <option value="">-- انتخاب رقم --</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small mb-1">قطعه (اختیاری)</label>
+                <select name="plotId" class="form-select" asp-items="(List<SelectListItem>)ViewBag.Plots">
+                    <option value="">-- کل (بدون قطعه) --</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small mb-1">برآورد (کیلوگرم)</label>
+                <input name="estimatedKg" type="number" min="1" step="any" class="form-control" required dir="ltr" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small mb-1">یادداشت</label>
+                <input name="note" class="form-control" maxlength="500" />
+            </div>
+            <div class="col-md-1">
+                <button class="btn btn-primary w-100">ثبت</button>
+            </div>
+        </div>
+        <div class="small text-muted mt-2">
+            اگر برای یک رقم هم برآورد کل و هم برآورد چند قطعه ثبت کنید، در مقایسه‌ی سطح رقم همه با هم جمع می‌شوند؛ پس یکی از دو روش را به‌کار ببرید.
+        </div>
+    </form>
+}
+
+<table class="table table-bordered table-hover bg-white">
+    <thead class="table-light">
+        <tr>
+            <th>محصول</th>
+            <th>رقم</th>
+            <th>قطعه</th>
+            <th>برآورد (kg)</th>
+            <th>برآورد (تن)</th>
+            <th>یادداشت</th>
+            @if (isManager)
+            {
+                <th>عملیات</th>
+            }
+        </tr>
+    </thead>
+    <tbody>
+        @if (!Model.Any())
+        {
+            <tr><td colspan="7" class="text-muted">برای این دوره هنوز برآوردی ثبت نشده است.</td></tr>
+        }
+        @foreach (var e in Model)
+        {
+            <tr>
+                <td>@e.Variety?.Product?.Name</td>
+                <td>@e.Variety?.Name</td>
+                <td>@(e.Plot != null ? (e.Plot.Farm?.Name + " / " + e.Plot.Name) : "کل")</td>
+                <td>@e.EstimatedKg.ToString("N0")</td>
+                <td>@((e.EstimatedKg / 1000m).ToString("N2"))</td>
+                <td>@e.Note</td>
+                @if (isManager)
+                {
+                    <td>
+                        <a asp-action="Edit" asp-route-id="@e.Id" class="btn btn-sm btn-primary">✏️</a>
+                        <form asp-action="Delete" asp-route-id="@e.Id" method="post" style="display:inline" onsubmit="return confirm('این برآورد حذف شود؟');">
+                            @Html.AntiForgeryToken()
+                            <button class="btn btn-sm btn-danger">🗑</button>
+                        </form>
+                    </td>
+                }
+            </tr>
+        }
+    </tbody>
+</table>
