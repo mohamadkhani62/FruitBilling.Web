@@ -75,7 +75,7 @@
 <h2 style="text-align:center;">🚜 صدور برگ خروج محصول</h2>
 
 <div class="card-form">
-    <form asp-action="Create" method="post">
+    <form asp-action="Create" method="post" id="createExitPermitForm">
         @Html.AntiForgeryToken()
 
         <div asp-validation-summary="All" class="text-danger mb-3"></div>
@@ -256,5 +256,34 @@
             refreshPermitItemRows();
         }
         refreshPermitItemRows();
+
+        // ثبت برگ چندمحصولی نیازمند تأیید صریح کاربر است.
+        const createForm = document.getElementById('createExitPermitForm');
+        if (createForm) {
+            createForm.addEventListener('submit', function (event) {
+                const rows = Array.from(document.querySelectorAll('#permitItems .permit-item'))
+                    .map(row => ({
+                        variety: row.querySelector('select')?.selectedOptions[0]?.textContent?.trim() || '',
+                        basketCount: row.querySelector('input[type="number"]')?.value || ''
+                    }))
+                    .filter(row => row.variety && row.basketCount);
+
+                if (rows.length > 1) {
+                    const details = rows.map((row, index) =>
+                        `${index + 1}. ${row.variety} — ${row.basketCount} سبد`
+                    ).join('\\n');
+
+                    const message =
+                        `این برگ خروج شامل ${rows.length} ردیف محصول/رقم است.\\n\\n` +
+                        details +
+                        '\\n\\nهر ردیف جداگانه ذخیره و در مرحله توزین، قبض‌های باسکول مخصوص خودش را خواهد داشت.\\n' +
+                        'آیا از ثبت این برگ چندمحصولی مطمئن هستید؟';
+
+                    if (!window.confirm(message)) {
+                        event.preventDefault();
+                    }
+                }
+            });
+        }
     </script>
 }
