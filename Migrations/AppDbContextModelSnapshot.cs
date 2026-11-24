@@ -662,11 +662,13 @@ namespace FruitBilling.Web.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("HarvestCycleId");
-
                     b.HasIndex("ProductId");
 
                     b.HasIndex("VarietyId");
+
+                    b.HasIndex("HarvestCycleId", "PermitNumber")
+                        .IsUnique()
+                        .HasFilter("[HarvestCycleId] IS NOT NULL AND [PermitNumber] <> ''");
 
                     b.ToTable("SortingExitPermits");
                 });
