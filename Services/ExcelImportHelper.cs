@@ -22,7 +22,7 @@ namespace FruitBilling.Web.Services
         public static IEnumerable<int> ExtractRowNumbers(string message)
         {
             var matches = System.Text.RegularExpressions.Regex.Matches(
-                message ?? "", @"ردیف(?:‌های|های)?\s*([0-9۰-۹]+(?:\s*[،,و]\s*[0-9۰-۹]+)*)");
+                message ?? "", @"ردیف(?:‌های|های)?\s*([0-9۰-۹٠-٩]+(?:\s*[،,و]\s*[0-9۰-۹٠-٩]+)*)");
             foreach (System.Text.RegularExpressions.Match match in matches)
             {
                 foreach (var token in System.Text.RegularExpressions.Regex.Split(match.Groups[1].Value, @"\s*[،,و]\s*"))
