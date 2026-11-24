@@ -391,6 +391,11 @@ namespace FruitBilling.Web.Controllers
             model.Items ??= new List<FruitExitPermitItem>();
             var submittedItems = model.Items.ToList();
             var validItemIds = permit.Items.Select(x => x.Id).ToHashSet();
+            if (validItemIds.Count == 0)
+            {
+                TempData["Warning"] = "این برگ خروج ردیف محصول/رقم ندارد و قابل توزین نیست.";
+                return RedirectToAction(nameof(Weigh), new { id, cycleId });
+            }
 
             if (submittedItems.GroupBy(x => x.Id).Any(g => g.Count() > 1) ||
                 submittedItems.Any(x => !validItemIds.Contains(x.Id)) ||
