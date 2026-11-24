@@ -49,8 +49,7 @@ builder.Services.ConfigureApplicationCookie(options =>
 // 🆕 اضافه کردن Razor Pages (برای صفحات Identity)
 //builder.Services.AddRazorPages();
 
-// کنترلرها و ویوها
-builder.Services.AddControllersWithViews();
+// کنترلرها و ویوها قبلاً در ابتدای ثبت سرویس‌ها اضافه شده‌اند.
 
 builder.Services.Configure<FormOptions>(options =>
 {
