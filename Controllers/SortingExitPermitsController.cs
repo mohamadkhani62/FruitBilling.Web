@@ -1871,10 +1871,6 @@ namespace FruitBilling.Web.Controllers
                         return $"مجموع سبد قبض‌های ردیف «{item.Grade}» ({ticketBasketTotal}) با تعداد سبد ردیف ({item.BasketCount}) برابر نیست.";
                 }
 
-                // قبض‌های متصل به والد نباید خارج از ردیف‌های این برگه باشند.
-                if (permit.BasculTickets != null && permit.BasculTickets.Count > 0)
-                    return "برگه جدید دارای قبض قدیمیِ بدون اتصال به ردیف است؛ ابتدا اطلاعات باسکول را اصلاح کنید.";
-
                 return null;
             }
 
