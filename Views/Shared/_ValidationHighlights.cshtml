@@ -1,0 +1,183 @@
+@{
+    var validationErrors = ViewData.ModelState
+        .Where(entry => entry.Value?.Errors.Count > 0)
+        .Select(entry => new
+        {
+            key = entry.Key,
+            messages = entry.Value!.Errors
+                .Select(error => string.IsNullOrWhiteSpace(error.ErrorMessage)
+                    ? "مقدار واردشده معتبر نیست."
+                    : error.ErrorMessage)
+                .ToArray()
+        })
+        .ToArray();
+}
+<style>
+    .validation-control-error,
+    .validation-control-error:focus {
+        border-color: #dc3545 !important;
+        background-color: #fff1f1 !important;
+        box-shadow: 0 0 0 .18rem rgba(220, 53, 69, .15) !important;
+    }
+    .validation-field-error {
+        background: #fff5f5;
+        border: 1px solid #dc3545;
+        border-radius: .4rem;
+        padding: .45rem;
+    }
+    .validation-row-error > td,
+    .validation-row-error {
+        background-color: #fff0f0 !important;
+    }
+    .validation-item-error {
+        background: #fff0f0 !important;
+        border: 2px solid #dc3545 !important;
+        border-radius: .45rem;
+    }
+    .validation-collection-error {
+        border: 2px solid #dc3545 !important;
+        background: #fff5f5 !important;
+        border-radius: .5rem;
+        padding: .65rem;
+    }
+    .validation-inline-message {
+        display: block;
+        color: #b02a37;
+        font-size: .82rem;
+        font-weight: 600;
+        margin-top: .3rem;
+    }
+    .validation-summary-errors {
+        background: #fff0f0;
+        border: 1px solid #dc3545;
+        border-radius: .45rem;
+        padding: .75rem 1rem;
+    }
+    .validation-summary-errors ul { margin-bottom: 0; }
+</style>
+<script>
+(function () {
+    const serverErrors = @Html.Raw(Json.Serialize(validationErrors));
+    const forms = Array.from(document.querySelectorAll('form')).filter(form =>
+        form.querySelector('[name="PermitNumber"], [name="FarmId"], [name="FarmName"], [name^="Items["], [name^="items["]'));
+
+    if (!forms.length) return;
+
+    function normalize(value) {
+        return String(value || '').replace(/\\s+/g, '').toLowerCase();
+    }
+
+    function findControl(form, key) {
+        const wanted = normalize(key);
+        return Array.from(form.elements).find(element => normalize(element.name) === wanted) || null;
+    }
+
+    function findCollection(form) {
+        return form.querySelector('#permitItems, #sortingItems') ||
+            form.querySelector('.table-responsive table tbody') ||
+            form.querySelector('.table-responsive');
+    }
+
+    function getFieldWrapper(control) {
+        return control.closest('td') ||
+            control.closest('.mb-3') ||
+            control.closest('.col-md-12, .col-md-6, .col-md-5, .col-md-4, .col-md-3, .col-md-2') ||
+            control.parentElement;
+    }
+
+    function addInlineMessage(wrapper, messages) {
+        if (!wrapper || !messages || !messages.length) return;
+        let note = wrapper.querySelector(':scope > .validation-inline-message');
+        if (!note) {
+            note = document.createElement('div');
+            note.className = 'validation-inline-message';
+            wrapper.appendChild(note);
+        }
+        note.textContent = Array.from(new Set(messages.filter(Boolean))).join(' ');
+    }
+
+    function markControl(control, messages) {
+        if (!control || !control.classList) return;
+        control.classList.add('validation-control-error');
+        control.setAttribute('aria-invalid', 'true');
+
+        const wrapper = getFieldWrapper(control);
+        wrapper?.classList.add('validation-field-error');
+        addInlineMessage(wrapper, messages);
+
+        const tableRow = control.closest('tr');
+        tableRow?.classList.add('validation-row-error');
+
+        const itemRow = control.closest('.permit-item, .sorting-item');
+        itemRow?.classList.add('validation-item-error');
+    }
+
+    function findItemRow(form, key) {
+        const match = String(key || '').match(/^items\\[(\\d+)\\]/i);
+        if (!match) return null;
+        const index = Number(match[1]);
+        const rows = form.querySelectorAll('#permitItems .permit-item, #sortingItems .sorting-item, .table-responsive tbody tr');
+        return rows[index] || null;
+    }
+
+    function markCollection(form, messages) {
+        const collection = findCollection(form);
+        if (!collection) return;
+        collection.classList.add('validation-collection-error');
+        if (messages?.length) addInlineMessage(collection, messages);
+    }
+
+    serverErrors.forEach(error => {
+        const key = String(error.key || '');
+        if (!key) return;
+
+        const control = findControl(forms[0], key);
+        if (control) {
+            markControl(control, error.messages);
+            return;
+        }
+
+        if (/^items(?:\\[|$)/i.test(key)) {
+            const row = findItemRow(forms[0], key);
+            if (row) {
+                row.classList.add('validation-item-error');
+                addInlineMessage(row, error.messages);
+            } else {
+                markCollection(forms[0], error.messages);
+            }
+        }
+    });
+
+    forms.forEach(form => {
+        form.querySelectorAll('.input-validation-error, [aria-invalid="true"]').forEach(control => {
+            markControl(control, []);
+        });
+
+        form.addEventListener('invalid', event => {
+            markControl(event.target, ['این فیلد الزامی است یا مقدار واردشده معتبر نیست.']);
+        }, true);
+
+        form.addEventListener('input', event => clearIfValid(event.target));
+        form.addEventListener('change', event => clearIfValid(event.target));
+    });
+
+    function clearIfValid(control) {
+        if (!control || !control.matches || !control.matches('input, select, textarea')) return;
+        if (typeof control.checkValidity === 'function' && !control.checkValidity()) return;
+
+        control.classList.remove('validation-control-error');
+        control.removeAttribute('aria-invalid');
+
+        const wrapper = getFieldWrapper(control);
+        if (wrapper && !wrapper.querySelector('.validation-control-error')) {
+            wrapper.classList.remove('validation-field-error');
+            wrapper.querySelector(':scope > .validation-inline-message')?.remove();
+        }
+
+        const row = control.closest('tr, .permit-item, .sorting-item');
+        if (row && !row.querySelector('.validation-control-error')) {
+            row.classList.remove('validation-row-error', 'validation-item-error');
+        }
+    }
+})();
+</script>
