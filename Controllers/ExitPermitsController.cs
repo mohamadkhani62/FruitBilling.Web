@@ -1000,7 +1000,7 @@ namespace FruitBilling.Web.Controllers
         // ==========================================
         [HttpPost, ValidateAntiForgeryToken]
         [RequestSizeLimit(100_000_000)]
-        public async Task<IActionResult> Import(IFormFile? file)
+        public async Task<IActionResult> Import(IFormFile? file, bool previewOnly = false)
         {
             var userId = _userManager.GetUserId(User);
             if (string.IsNullOrEmpty(userId)) return Unauthorized();
@@ -1217,7 +1217,7 @@ namespace FruitBilling.Web.Controllers
                     }
 
                     // یک SaveChanges = یا همه‌ی تب‌های معتبر ثبت می‌شوند یا هیچ‌کدام
-                    if (toAdd.Count > 0)
+                    if (!previewOnly && toAdd.Count > 0)
                     {
                         _db.FruitExitPermits.AddRange(toAdd);
                         await _db.SaveChangesAsync();
@@ -1237,6 +1237,7 @@ namespace FruitBilling.Web.Controllers
             }
 
             ViewBag.Report = reports;
+            ViewBag.IsImportPreview = previewOnly;
 
             if (!reports.Any(r => !r.HasErrors && (r.Permits > 0 || r.Duplicates > 0)))
                 ModelState.AddModelError("", "هیچ تبی ثبت نشد. جزئیات هر تب را در گزارش زیر ببینید.");
