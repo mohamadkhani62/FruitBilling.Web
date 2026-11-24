@@ -331,6 +331,29 @@ namespace FruitBilling.Web.Controllers
                     ModelState.AddModelError("Items", "برای افزودن یا حذف ردیف، مجوز ویرایش رقم، درجه و تعداد سبد لازم است.");
                 if (submittedIds.Any(x => permit.Items.All(dbItem => dbItem.Id != x)))
                     ModelState.AddModelError("Items", "یک ردیف ارسالی متعلق به این برگ خروج نیست.");
+
+                // پس از ثبت قبض، تغییر رقم/درجه یا تعداد سبد ردیف باعث می‌شود
+                // قبض‌های موجود به محصول اشتباه منتسب شوند یا جمع سبدها ناسازگار شود.
+                foreach (var posted in submitted.Where(x => x.Id > 0))
+                {
+                    var existingItem = permit.Items.FirstOrDefault(x => x.Id == posted.Id);
+                    if (existingItem == null || !existingItem.BasculTickets.Any())
+                        continue;
+
+                    if (posted.VarietyId != existingItem.VarietyId ||
+                        !string.Equals(posted.Grade?.Trim(), existingItem.Grade?.Trim(), StringComparison.Ordinal))
+                    {
+                        ModelState.AddModelError("Items",
+                            $"ردیف «{existingItem.Grade}» قبض باسکول دارد؛ تغییر رقم یا درجه آن تا زمان تعیین تکلیف قبض‌ها مجاز نیست.");
+                    }
+
+                    if (posted.BasketCount != existingItem.BasketCount)
+                    {
+                        ModelState.AddModelError("Items",
+                            $"ردیف «{existingItem.Grade}» قبض باسکول دارد؛ برای جلوگیری از مغایرت تعداد سبد قبض‌ها، ابتدا قبض‌ها را اصلاح کنید.");
+                    }
+                }
+
                 foreach (var removed in permit.Items.Where(x => !submittedIds.Contains(x.Id)))
                     if (removed.BasculTickets.Any())
                         ModelState.AddModelError("Items", $"ردیف «{removed.Grade}» قبض باسکول دارد و حذف آن مجاز نیست.");
