@@ -1,6 +1,6 @@
 ﻿@model FruitBilling.Web.Models.SortingExitPermit
 @{
-    ViewData["Title"] = "صدور برگ خروج سورتینگ";
+    ViewData["Title"] = "صدور مجوز تحویل سورتینگ";
     var currentUserId = UserManager.GetUserId(User)!;
     var perms = await PermissionService.GetEditableFieldsAsync(currentUserId, "SortingExitPermits", new FruitBilling.Web.Models.SortingExitPermit());
 
@@ -52,7 +52,7 @@
     }
 </style>
 
-<h2 style="text-align:center;">🍏 صدور برگ خروج از سورتینگ</h2>
+<h2 style="text-align:center;">🍏 صدور مجوز تحویل از سورتینگ</h2>
 
 <div class="card-form">
     <form asp-action="Create" method="post">
@@ -66,11 +66,12 @@
             <div class="alert alert-success py-2">🌱 دوره برداشت: <b>@currentCycle.Name</b> (@currentCycle.Year)</div>
         }
 
-        <div class="section-title">📄 اطلاعات برگه</div>
+        <div class="section-title">📄 اطلاعات مجوز تحویل</div>
         <div class="row">
             <div class="col-md-4 mb-3">
-                <label asp-for="PermitNumber" class="form-label">شماره برگ خروج *</label>
+                <label asp-for="PermitNumber" class="form-label">شماره مجوز تحویل *</label>
                 <input asp-for="PermitNumber" class="form-control @(perms.GetValueOrDefault("PermitNumber") ? "" : "readonly-field")" readonly="@(!perms.GetValueOrDefault("PermitNumber"))" maxlength="15" required />
+                <span asp-validation-for="PermitNumber" class="text-danger"></span>
             </div>
             <div class="col-md-4 mb-3">
                 <label asp-for="Date" class="form-label"></label>
