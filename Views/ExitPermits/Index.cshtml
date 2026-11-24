@@ -139,6 +139,7 @@ else
         <tbody>
             @{
                 int row = 1;
+                int permitGroupNumber = 0;
             }
             @if (!Model.Any())
             {
@@ -147,7 +148,7 @@ else
             @foreach (var item in Model)
             {
                 // همه ردیف‌های یک برگ خروج یک رنگ دارند تا مرز هر برگ مشخص باشد.
-                var groupBackground = row % 2 == 1 ? "#f5f9ff" : "#ffffff";
+                var groupBackground = permitGroupNumber++ % 2 == 0 ? "#f5f9ff" : "#ffffff";
                 var details = item.Items?.Any() == true ? item.Items : new List<FruitBilling.Web.Models.FruitExitPermitItem>();
                 if (details.Count == 0)
                 {
