@@ -9,7 +9,10 @@
     bool isManager = User.IsInRole("Manager");
     bool lockAll = isApproved && !isManager;
 
-    bool canManageTickets = (perms.GetValueOrDefault("TicketNo_Sort") || perms.GetValueOrDefault("EmptyWeight_Sort") || perms.GetValueOrDefault("GrossWeight_Sort")) && !lockAll;
+    bool canEditTicketFields = (perms.GetValueOrDefault("TicketNo_Sort") ||
+        perms.GetValueOrDefault("EmptyWeight_Sort") || perms.GetValueOrDefault("GrossWeight_Sort")) && !lockAll;
+    bool canManageTickets = perms.GetValueOrDefault("TicketNo_Sort") &&
+        perms.GetValueOrDefault("EmptyWeight_Sort") && perms.GetValueOrDefault("GrossWeight_Sort") && !lockAll;
 }
 
 <style>
@@ -297,20 +300,20 @@
                             <td>@ticket.NetWeight.ToString("N0")</td>
                             <td>@ticket.CreatedAt.ToString("yyyy/MM/dd HH:mm")</td>
                             <td style="white-space: nowrap;">
-                                @if (canManageTickets)
+                                @if (canEditTicketFields)
                                 {
-                                    <a asp-action="EditTicket" asp-route-id="@ticket.Id" asp-route-permitId="@Model.Id" asp-route-page="@ViewBag.ReturnPage" class="btn btn-warning btn-sm">✏️ ویرایش</a>
-                                    @if (Model.BasculTickets.Count > 1)
-                                    {
-                                        <form asp-action="DeleteTicket" asp-route-id="@ticket.Id" asp-route-permitId="@Model.Id" asp-route-page="@ViewBag.ReturnPage" method="post" style="display:inline" onsubmit="return confirm('حذف شود؟')">
-                                            @Html.AntiForgeryToken()
-                                            <button type="submit" class="btn btn-danger btn-sm">🗑️ حذف</button>
-                                        </form>
-                                    }
+                                    <a asp-action="EditTicket" asp-route-id="@ticket.Id" asp-route-permitId="@Model.Id" asp-route-page="@ViewBag.ReturnPage" class="btn btn-warning btn-sm">✏️ ویرایش فیلدهای مجاز</a>
                                 }
                                 else
                                 {
                                     <span class="text-muted">غیرقابل ویرایش</span>
+                                }
+                                @if (canManageTickets && Model.BasculTickets.Count > 1)
+                                {
+                                    <form asp-action="DeleteTicket" asp-route-id="@ticket.Id" asp-route-permitId="@Model.Id" asp-route-page="@ViewBag.ReturnPage" method="post" style="display:inline" onsubmit="return confirm('حذف شود؟')">
+                                        @Html.AntiForgeryToken()
+                                        <button type="submit" class="btn btn-danger btn-sm">🗑️ حذف</button>
+                                    </form>
                                 }
                             </td>
                         </tr>
