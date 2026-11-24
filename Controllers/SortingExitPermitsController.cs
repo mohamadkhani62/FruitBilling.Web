@@ -298,7 +298,7 @@ namespace FruitBilling.Web.Controllers
         {
             var actionResult = await Reconciliation(cycleId);
             if (actionResult is not ViewResult viewResult ||
-                viewResult.Model is not PermitReconciliationViewModel report)
+                viewResult.ViewData.Model is not PermitReconciliationViewModel report)
                 return BadRequest("امکان تهیه گزارش تطبیق وجود ندارد.");
 
             using var workbook = new XLWorkbook();
