@@ -274,9 +274,11 @@
         </div>
     </form>
 
-    <!-- بخش قبض‌های باسکول -->
-    @if (Model.BasculTickets != null && Model.BasculTickets.Any())
+    <!-- قبض‌های مستقیم روی سربرگ فقط برای برگه‌های قدیمیِ بدون ردیف نگهداری شده‌اند. -->
+    @if (Model.Items == null || !Model.Items.Any())
     {
+        @if (Model.BasculTickets != null && Model.BasculTickets.Any())
+        {
         <div class="mt-5 border-top pt-4">
             <h4>⚖️ قبض‌های باسکول ثبت شده</h4>
             <table class="table table-bordered text-center mt-3">
@@ -343,6 +345,14 @@
                     </form>
                 </div>
             }
+        </div>
+        }
+    }
+    else
+    {
+        <div class="alert alert-info mt-4">
+            قبض‌های این مجوز باید به تفکیک هر ردیف رقم و درجه ثبت شوند.
+            <a asp-action="Weigh" asp-route-id="@Model.Id" class="btn btn-warning btn-sm ms-2">⚖️ ثبت / ویرایش توزین ردیف‌ها</a>
         </div>
     }
 </div>
