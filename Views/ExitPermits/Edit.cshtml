@@ -108,7 +108,7 @@
             </div>
             <div class="col-md-4 mb-3">
                 <label asp-for="BasketCount" class="form-label"></label>
-                <input asp-for="BasketCount" class="form-control @(canEditBasketCount ? "" : "readonly-field")" readonly="@(!canEditBasketCount)" type="number" />
+                <input asp-for="BasketCount" class="form-control readonly-field" readonly="readonly" type="number" />
             </div>
         </div>
 
@@ -130,7 +130,7 @@
             </div>
             <div class="col-md-4 mb-3">
                 <label class="form-label text-primary">محصول / رقم</label>
-                <select asp-for="VarietyId" asp-items="ViewBag.VarietyList" class="form-select @(canEditProduct ? "border-primary" : "readonly-field")" disabled="@(!canEditProduct)">
+                <select asp-for="VarietyId" asp-items="ViewBag.VarietyList" class="form-select readonly-field" disabled="disabled">
                     <option value="">-- انتخاب رقم --</option>
                 </select>
             </div>
