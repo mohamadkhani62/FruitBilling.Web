@@ -13,6 +13,8 @@
 
     bool canEditPermitNumber = perms.GetValueOrDefault("PermitNumber") && !lockAll;
     bool canEditDate = perms.GetValueOrDefault("Date") && !lockAll;
+    bool canEditFarm = perms.GetValueOrDefault("FarmId") && !lockAll;
+    bool canEditPlot = perms.GetValueOrDefault("PlotId") && !lockAll;
     bool canEditBasketCount = perms.GetValueOrDefault("BasketCount") && !lockAll;
     bool canEditProduct = perms.GetValueOrDefault("ProductType") && !lockAll;
     bool canEditHarvest = perms.GetValueOrDefault("HarvestMethod") && !lockAll;
@@ -112,6 +114,20 @@
 
         <div class="section-title">🌾 مبدا و محصول</div>
         <div class="row">
+            <div class="col-md-4 mb-3">
+                <label class="form-label">مزرعه</label>
+                <select asp-for="FarmId" asp-items="ViewBag.Farms" class="form-select @(canEditFarm ? "" : "readonly-field")" disabled="@(!canEditFarm)">
+                    <option value="">-- انتخاب مزرعه --</option>
+                </select>
+                @if (!canEditFarm) { <input type="hidden" asp-for="FarmId" /> }
+            </div>
+            <div class="col-md-4 mb-3">
+                <label class="form-label">قطعه</label>
+                <select asp-for="PlotId" asp-items="ViewBag.Plots" class="form-select @(canEditPlot ? "" : "readonly-field")" disabled="@(!canEditPlot)">
+                    <option value="">-- انتخاب قطعه --</option>
+                </select>
+                @if (!canEditPlot) { <input type="hidden" asp-for="PlotId" /> }
+            </div>
             <div class="col-md-4 mb-3">
                 <label class="form-label text-primary">محصول / رقم</label>
                 <select asp-for="VarietyId" asp-items="ViewBag.VarietyList" class="form-select @(canEditProduct ? "border-primary" : "readonly-field")" disabled="@(!canEditProduct)">
