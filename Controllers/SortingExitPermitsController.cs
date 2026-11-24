@@ -506,11 +506,8 @@ namespace FruitBilling.Web.Controllers
                 .Include(p => p.Items).ThenInclude(x => x.BasculTickets)
                 .FirstOrDefaultAsync(p => p.Id == id);
             if (permit == null) return NotFound();
-            if (permit.Status == "توزین شده")
-            {
-                TempData["Warning"] = "این برگه قبلاً توزین شده است.";
-                return RedirectToAction(nameof(Index), new { cycleId = permit.HarvestCycleId ?? 0, focusId = permit.Id });
-            }
+            // امکان بازبینی و اصلاح قبض‌ها پس از توزین نیز مجاز است؛
+            // کنترل دسترسی در ثبت POST مجدداً بررسی می‌شود.
             return View(permit);
         }
 
