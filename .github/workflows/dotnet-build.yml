@@ -12,6 +12,11 @@ on:
 permissions:
   contents: write
 
+# فقط آخرین Push هر شاخه باید Migration بسازد و آن را ثبت کند.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -32,6 +37,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Sync feature branch to latest commit
+        if: github.event_name == 'push' && github.ref == 'refs/heads/feature/multi-product-exit-permits'
+        run: |
+          git fetch origin "${GITHUB_REF_NAME}"
+          git reset --hard "origin/${GITHUB_REF_NAME}"
 
       - name: Setup .NET 10 SDK
         uses: actions/setup-dotnet@v4
