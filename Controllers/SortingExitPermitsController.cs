@@ -476,21 +476,35 @@ namespace FruitBilling.Web.Controllers
         // ==========================================
         // ۴. مدیریت قبض‌های باسکول
         // ==========================================
-        private async Task<bool> CanManageBasculTicketsAsync(string userId, SortingExitPermit permit)
+        private async Task<Dictionary<string, bool>?> GetTicketPermissionsAsync(string userId, SortingExitPermit permit)
         {
-            if (string.IsNullOrEmpty(userId)) return false;
+            if (string.IsNullOrEmpty(userId)) return null;
 
             // برگه‌ی تأییدشده فقط برای مدیر قابل تغییر است.
             if ((permit.Status == "تأیید فروش" || permit.Status == "تأیید شده توسط فروش") && !User.IsInRole("Manager"))
-                return false;
+                return null;
 
-            var perms = await _permissionService.GetEditableFieldsAsync(userId, "SortingExitPermits", permit);
+            return await _permissionService.GetEditableFieldsAsync(userId, "SortingExitPermits", permit);
+        }
 
-            // افزودن/حذف قبض قدیمی نیازمند اجازه ویرایش همه‌ی فیلدهای ضروری قبض است.
-            // وزن خالص محاسباتی است و هرگز مجوز مستقل ویرایش محسوب نمی‌شود.
-            return perms.GetValueOrDefault("TicketNo_Sort")
-                && perms.GetValueOrDefault("EmptyWeight_Sort")
-                && perms.GetValueOrDefault("GrossWeight_Sort");
+        private async Task<bool> CanManageBasculTicketsAsync(string userId, SortingExitPermit permit)
+        {
+            var perms = await GetTicketPermissionsAsync(userId, permit);
+            return perms != null &&
+                (perms.GetValueOrDefault("TicketNo_Sort") ||
+                 perms.GetValueOrDefault("BasketCount_Sort") ||
+                 perms.GetValueOrDefault("EmptyWeight_Sort") ||
+                 perms.GetValueOrDefault("GrossWeight_Sort"));
+        }
+
+        // افزودن یا حذف قبض قدیمی یک عملیات ساختاری است و به مجوز همه‌ی فیلدهای اجباری قبض نیاز دارد.
+        private async Task<bool> CanManageLegacyTicketStructureAsync(string userId, SortingExitPermit permit)
+        {
+            var perms = await GetTicketPermissionsAsync(userId, permit);
+            return perms != null &&
+                perms.GetValueOrDefault("TicketNo_Sort") &&
+                perms.GetValueOrDefault("EmptyWeight_Sort") &&
+                perms.GetValueOrDefault("GrossWeight_Sort");
         }
 
         [HttpGet]
@@ -509,14 +523,19 @@ namespace FruitBilling.Web.Controllers
             }
 
             var userId = _userManager.GetUserId(User);
-            if (!await CanManageBasculTicketsAsync(userId!, permit))
+            if (string.IsNullOrEmpty(userId)) return Unauthorized();
+            var ticketPermissions = await GetTicketPermissionsAsync(userId, permit);
+            if (ticketPermissions == null ||
+                !new[] { "TicketNo_Sort", "EmptyWeight_Sort", "GrossWeight_Sort" }
+                    .Any(field => ticketPermissions.GetValueOrDefault(field)))
             {
-                TempData["Warning"] = "شما دسترسی ویرایش قبض باسکول را ندارید.";
+                TempData["Warning"] = "شما دسترسی ویرایش فیلدهای قبض باسکول را ندارید.";
                 return RedirectToAction(nameof(Edit), new { id = permitId, page = page });
             }
 
             ViewBag.PermitId = permitId;
             ViewBag.ReturnPage = page;
+            ViewBag.TicketPermissions = ticketPermissions;
             return View(ticket);
         }
 
@@ -524,6 +543,7 @@ namespace FruitBilling.Web.Controllers
         public async Task<IActionResult> EditTicket(int id, SortingBasculTicket model, int permitId, int? page)
         {
             if (id != model.Id) return BadRequest();
+
             var ticket = await _db.SortingBasculTickets.FindAsync(id);
             var permit = await _db.SortingExitPermits
                 .Include(p => p.Items)
@@ -537,24 +557,47 @@ namespace FruitBilling.Web.Controllers
             }
 
             var userId = _userManager.GetUserId(User);
-            if (!await CanManageBasculTicketsAsync(userId!, permit))
+            if (string.IsNullOrEmpty(userId)) return Unauthorized();
+            var ticketPermissions = await GetTicketPermissionsAsync(userId, permit);
+            if (ticketPermissions == null)
             {
                 TempData["Warning"] = "شما دسترسی ویرایش قبض باسکول را ندارید.";
                 return RedirectToAction(nameof(Edit), new { id = permitId, page = page });
             }
 
-            if (ModelState.IsValid)
+            bool canEditTicketNo = ticketPermissions.GetValueOrDefault("TicketNo_Sort");
+            bool canEditEmptyWeight = ticketPermissions.GetValueOrDefault("EmptyWeight_Sort");
+            bool canEditGrossWeight = ticketPermissions.GetValueOrDefault("GrossWeight_Sort");
+            if (!canEditTicketNo && !canEditEmptyWeight && !canEditGrossWeight)
             {
-                ticket.TicketNo = model.TicketNo;
-                ticket.EmptyWeight = model.EmptyWeight;
-                ticket.GrossWeight = model.GrossWeight;
-                ticket.NetWeight = model.GrossWeight - model.EmptyWeight; // محاسبه مجدد در سرور
-                await _db.SaveChangesAsync();
-                TempData["Msg"] = "قبض باسکول ویرایش شد.";
+                TempData["Warning"] = "شما دسترسی ویرایش هیچ‌یک از فیلدهای قبض را ندارید.";
                 return RedirectToAction(nameof(Edit), new { id = permitId, page = page });
             }
 
+            string ticketNo = canEditTicketNo ? (model.TicketNo ?? string.Empty).Trim() : ticket.TicketNo ?? string.Empty;
+            int emptyWeight = canEditEmptyWeight ? model.EmptyWeight : ticket.EmptyWeight;
+            int grossWeight = canEditGrossWeight ? model.GrossWeight : ticket.GrossWeight;
+
+            if (ModelState.IsValid && !string.IsNullOrWhiteSpace(ticketNo) &&
+                ticketNo.Length <= 30 && emptyWeight >= 0 && grossWeight > emptyWeight)
+            {
+                ticket.TicketNo = ticketNo;
+                ticket.EmptyWeight = emptyWeight;
+                ticket.GrossWeight = grossWeight;
+                ticket.NetWeight = grossWeight - emptyWeight;
+                await _db.SaveChangesAsync();
+                TempData["Msg"] = "فیلدهای مجاز قبض باسکول ویرایش شد.";
+                return RedirectToAction(nameof(Edit), new { id = permitId, page = page });
+            }
+
+            if (string.IsNullOrWhiteSpace(ticketNo) || ticketNo.Length > 30)
+                ModelState.AddModelError(nameof(model.TicketNo), "شماره قبض الزامی و حداکثر ۳۰ کاراکتر است.");
+            if (emptyWeight < 0 || grossWeight <= emptyWeight)
+                ModelState.AddModelError("", "وزن خالی نباید منفی باشد و وزن پر باید از وزن خالی بیشتر باشد.");
+
             ViewBag.PermitId = permitId;
+            ViewBag.ReturnPage = page;
+            ViewBag.TicketPermissions = ticketPermissions;
             return View(model);
         }
 
@@ -574,9 +617,9 @@ namespace FruitBilling.Web.Controllers
             }
 
             var userId = _userManager.GetUserId(User);
-            if (!await CanManageBasculTicketsAsync(userId!, permit))
+            if (string.IsNullOrEmpty(userId) || !await CanManageLegacyTicketStructureAsync(userId, permit))
             {
-                TempData["Warning"] = "شما دسترسی حذف قبض باسکول را ندارید.";
+                TempData["Warning"] = "برای حذف قبض، مجوز ویرایش شماره قبض و وزن‌های خالی و پر لازم است.";
                 return RedirectToAction(nameof(Edit), new { id = permitId, page = page });
             }
 
@@ -612,13 +655,14 @@ namespace FruitBilling.Web.Controllers
             }
 
             var userId = _userManager.GetUserId(User);
-            if (!await CanManageBasculTicketsAsync(userId!, permit))
+            if (string.IsNullOrEmpty(userId) || !await CanManageLegacyTicketStructureAsync(userId, permit))
             {
-                TempData["Warning"] = "شما دسترسی افزودن قبض باسکول را ندارید.";
+                TempData["Warning"] = "برای افزودن قبض، مجوز ویرایش شماره قبض و وزن‌های خالی و پر لازم است.";
                 return RedirectToAction(nameof(Edit), new { id = permitId, page = page });
             }
 
-            if (grossWeight > emptyWeight)
+            if (!string.IsNullOrWhiteSpace(ticketNo) && ticketNo.Trim().Length <= 30 &&
+                emptyWeight >= 0 && grossWeight > emptyWeight)
             {
                 var newTicket = new SortingBasculTicket
                 {
@@ -635,7 +679,7 @@ namespace FruitBilling.Web.Controllers
             }
             else
             {
-                TempData["Warning"] = "وزن پر باید بزرگتر از وزن خالی باشد.";
+                TempData["Warning"] = "شماره قبض باید وارد شود و وزن خالی نامنفی و وزن پر بزرگ‌تر از وزن خالی باشد.";
             }
             return RedirectToAction(nameof(Edit), new { id = permitId, page = page });
         }
@@ -652,8 +696,19 @@ namespace FruitBilling.Web.Controllers
                 .Include(p => p.Items).ThenInclude(x => x.BasculTickets)
                 .FirstOrDefaultAsync(p => p.Id == id);
             if (permit == null) return NotFound();
-            // امکان بازبینی و اصلاح قبض‌ها پس از توزین نیز مجاز است؛
-            // کنترل دسترسی در ثبت POST مجدداً بررسی می‌شود.
+
+            var userId = _userManager.GetUserId(User);
+            if (string.IsNullOrEmpty(userId)) return Unauthorized();
+            var ticketPermissions = await GetTicketPermissionsAsync(userId, permit);
+            if (ticketPermissions == null ||
+                !new[] { "TicketNo_Sort", "BasketCount_Sort", "EmptyWeight_Sort", "GrossWeight_Sort" }
+                    .Any(field => ticketPermissions.GetValueOrDefault(field)))
+            {
+                TempData["Warning"] = "شما اجازه مشاهده و ویرایش اطلاعات توزین این برگه را ندارید.";
+                return RedirectToAction(nameof(Index), new { cycleId = permit.HarvestCycleId ?? 0, focusId = permit.Id });
+            }
+
+            // کنترل همه‌ی تغییرات در POST نیز دوباره انجام می‌شود.
             return View(permit);
         }
 
