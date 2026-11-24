@@ -140,15 +140,27 @@ namespace FruitBilling.Web.Controllers
 
             // هر ردیف محصول/رقم در جزئیات جداگانه ذخیره می‌شود.
             model.Items ??= new List<FruitExitPermitItem>();
-            model.Items = model.Items
-                .Where(x => x.VarietyId > 0 || x.BasketCount > 0)
-                .ToList();
+            var originalItems = model.Items.ToList();
 
-            if (model.Items.Count == 0)
+            if (!originalItems.Any(x => x.VarietyId > 0 || x.BasketCount > 0))
                 ModelState.AddModelError("Items", "حداقل یک محصول/رقم به برگ خروج اضافه کنید.");
 
-            if (model.Items.Any(x => x.VarietyId <= 0 || x.BasketCount <= 0))
-                ModelState.AddModelError("Items", "برای هر ردیف، رقم و تعداد سبد معتبر وارد کنید.");
+            // خطاها با کلید همان ورودی ثبت می‌شوند تا فرم بتواند همان فیلد و ردیف را مشخص کند.
+            for (var itemIndex = 0; itemIndex < originalItems.Count; itemIndex++)
+            {
+                var item = originalItems[itemIndex];
+                if (item.VarietyId > 0 || item.BasketCount > 0)
+                {
+                    if (item.VarietyId <= 0)
+                        ModelState.AddModelError($"Items[{itemIndex}].VarietyId", "رقم این ردیف را انتخاب کنید.");
+                    if (item.BasketCount <= 0)
+                        ModelState.AddModelError($"Items[{itemIndex}].BasketCount", "تعداد سبد باید بیشتر از صفر باشد.");
+                }
+            }
+
+            model.Items = originalItems
+                .Where(x => x.VarietyId > 0 || x.BasketCount > 0)
+                .ToList();
 
             var cycleForItems = model.HarvestCycleId.HasValue
                 ? await _db.HarvestCycles.Include(c => c.HarvestCycleCategories)
@@ -159,14 +171,20 @@ namespace FruitBilling.Web.Controllers
             if (allowedCategoryIds.Length == 0 && cycleForItems?.CategoryId is int legacyCategoryId)
                 allowedCategoryIds = new[] { legacyCategoryId };
 
-            var selectedVarietyIds = model.Items.Select(x => x.VarietyId).Distinct().ToArray();
+            var selectedVarietyIds = model.Items.Select(x => x.VarietyId).Where(x => x > 0).Distinct().ToArray();
             var selectedVarieties = await _db.ProductVarieties.Include(v => v.Product)
                 .Where(v => selectedVarietyIds.Contains(v.Id)).ToListAsync();
 
-            if (selectedVarieties.Count != selectedVarietyIds.Length ||
-                selectedVarieties.Any(v => v.Product == null ||
-                    (allowedCategoryIds.Length > 0 && !allowedCategoryIds.Contains(v.Product.CategoryId ?? 0))))
-                ModelState.AddModelError("Items", "یکی از ارقام انتخاب‌شده متعلق به گونه‌های این دوره برداشت نیست.");
+            var validVarietyIds = selectedVarieties
+                .Where(v => v.Product != null &&
+                    (allowedCategoryIds.Length == 0 || allowedCategoryIds.Contains(v.Product.CategoryId ?? 0)))
+                .Select(v => v.Id).ToHashSet();
+            foreach (var (item, itemIndex) in originalItems.Select((item, index) => (item, index)))
+            {
+                if (item.VarietyId > 0 && !validVarietyIds.Contains(item.VarietyId))
+                    ModelState.AddModelError($"Items[{itemIndex}].VarietyId",
+                        "رقم انتخاب‌شده در اطلاعات پایه موجود نیست یا متعلق به گونه‌های این دوره برداشت نیست.");
+            }
 
             if (!ModelState.IsValid)
             {
