@@ -493,8 +493,16 @@ namespace FruitBilling.Web.Controllers
         public async Task<IActionResult> EditTicket(int id, int permitId, int? page)
         {
             var ticket = await _db.SortingBasculTickets.FindAsync(id);
-            var permit = await _db.SortingExitPermits.FindAsync(permitId);
-            if (ticket == null || permit == null) return NotFound();
+            var permit = await _db.SortingExitPermits
+                .Include(p => p.Items)
+                .FirstOrDefaultAsync(p => p.Id == permitId);
+            if (ticket == null || permit == null || ticket.SortingExitPermitId != permitId) return NotFound();
+
+            if (permit.Items.Any())
+            {
+                TempData["Warning"] = "این قبض باید در صفحه توزین ردیف رقم/درجه خودش ویرایش شود.";
+                return RedirectToAction(nameof(Weigh), new { id = permitId });
+            }
 
             var userId = _userManager.GetUserId(User);
             if (!await CanManageBasculTicketsAsync(userId!, permit))
@@ -513,8 +521,16 @@ namespace FruitBilling.Web.Controllers
         {
             if (id != model.Id) return BadRequest();
             var ticket = await _db.SortingBasculTickets.FindAsync(id);
-            var permit = await _db.SortingExitPermits.FindAsync(permitId);
-            if (ticket == null || permit == null) return NotFound();
+            var permit = await _db.SortingExitPermits
+                .Include(p => p.Items)
+                .FirstOrDefaultAsync(p => p.Id == permitId);
+            if (ticket == null || permit == null || ticket.SortingExitPermitId != permitId) return NotFound();
+
+            if (permit.Items.Any())
+            {
+                TempData["Warning"] = "این قبض باید در صفحه توزین ردیف رقم/درجه خودش ویرایش شود.";
+                return RedirectToAction(nameof(Weigh), new { id = permitId });
+            }
 
             var userId = _userManager.GetUserId(User);
             if (!await CanManageBasculTicketsAsync(userId!, permit))
@@ -541,8 +557,17 @@ namespace FruitBilling.Web.Controllers
         [HttpPost, ValidateAntiForgeryToken]
         public async Task<IActionResult> DeleteTicket(int id, int permitId, int? page)
         {
-            var permit = await _db.SortingExitPermits.Include(p => p.BasculTickets).FirstOrDefaultAsync(p => p.Id == permitId);
+            var permit = await _db.SortingExitPermits
+                .Include(p => p.BasculTickets)
+                .Include(p => p.Items)
+                .FirstOrDefaultAsync(p => p.Id == permitId);
             if (permit == null) return NotFound();
+
+            if (permit.Items.Any())
+            {
+                TempData["Warning"] = "قبض‌های این مجوز باید از صفحه توزین ردیف‌های رقم/درجه حذف یا اصلاح شوند.";
+                return RedirectToAction(nameof(Weigh), new { id = permitId });
+            }
 
             var userId = _userManager.GetUserId(User);
             if (!await CanManageBasculTicketsAsync(userId!, permit))
