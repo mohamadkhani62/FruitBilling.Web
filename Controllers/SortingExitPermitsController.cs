@@ -570,8 +570,17 @@ namespace FruitBilling.Web.Controllers
         [HttpPost, ValidateAntiForgeryToken]
         public async Task<IActionResult> AddTicket(int permitId, string ticketNo, int emptyWeight, int grossWeight, int? page)
         {
-            var permit = await _db.SortingExitPermits.FindAsync(permitId);
+            var permit = await _db.SortingExitPermits
+                .Include(p => p.Items)
+                .FirstOrDefaultAsync(p => p.Id == permitId);
             if (permit == null) return NotFound();
+
+            // قبض‌های برگه‌های چندردیفی باید از مسیر توزین هر ردیف ثبت شوند.
+            if (permit.Items.Any())
+            {
+                TempData["Warning"] = "این مجوز دارای ردیف‌های رقم/درجه است؛ قبض را از صفحه توزین همان ردیف ثبت کنید.";
+                return RedirectToAction(nameof(Weigh), new { id = permitId });
+            }
 
             var userId = _userManager.GetUserId(User);
             if (!await CanManageBasculTicketsAsync(userId!, permit))
