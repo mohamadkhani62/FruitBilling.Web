@@ -94,11 +94,7 @@
                 <input asp-for="Date" class="form-control @(canEditDate ? "" : "readonly-field")"
                        readonly="@(!canEditDate)" placeholder="1404/08/18" />
             </div>
-            <div class="col-md-4 mb-3">
-                <label asp-for="BasketCount" class="form-label"></label>
-                <input asp-for="BasketCount" class="form-control @(canEditBasketCount ? "" : "readonly-field")"
-                       readonly="@(!canEditBasketCount)" type="number" />
-            </div>
+
         </div>
 
         <!-- اطلاعات مبدا و محصول -->
