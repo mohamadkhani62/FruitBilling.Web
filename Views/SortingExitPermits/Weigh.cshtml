@@ -64,6 +64,11 @@
         @Html.AntiForgeryToken()
         <input type="hidden" asp-for="Id" />
         <h4>توزین به تفکیک رقم و درجه</h4>
+        <div class="small d-flex flex-wrap gap-3 mb-3" aria-label="راهنمای رنگ وضعیت">
+            <span><span class="badge bg-success">سبز</span> اطلاعات معتبر</span>
+            <span><span class="badge bg-danger">قرمز</span> خطا و مانع ثبت</span>
+            <span><span class="badge bg-warning text-dark">زرد</span> نیازمند بررسی هشدار سرور</span>
+        </div>
 
         @for (var i = 0; i < Model.Items.Count; i++)
         {
