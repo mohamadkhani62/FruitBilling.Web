@@ -1011,17 +1011,27 @@ namespace FruitBilling.Web.Controllers
                         var merged = MergeGroups(rows, rep);
                         if (rep.HasErrors) continue;
 
-                        // ---------- جلوگیری از ثبت برگه‌ی تکراری در همان دوره ----------
-                        var existingKeys = (await _db.SortingExitPermits.AsNoTracking()
+                        // ---------- شماره مجوز تحویل در هر دوره یکتا است ----------
+                        // نام مزرعه بخشی از کلید یکتایی نیست؛ یک شماره نباید در همان دوره
+                        // برای دو مزرعه یا دو برگه متفاوت دوباره استفاده شود.
+                        var seenPermitNumbers = (await _db.SortingExitPermits.AsNoTracking()
                                 .Where(p => p.HarvestCycleId == cycle.Id)
-                                .Select(p => new { p.PermitNumber, p.FarmName })
+                                .Select(p => p.PermitNumber)
                                 .ToListAsync())
-                            .Select(k => Norm(k.PermitNumber) + "|" + Norm(k.FarmName))
+                            .Select(Norm)
+                            .Where(number => !string.IsNullOrWhiteSpace(number))
                             .ToHashSet();
 
                         foreach (var (first, ticketRows) in merged)
                         {
-                            if (existingKeys.Contains(Norm(first.PermitNumber) + "|" + Norm(first.FarmName)))
+                            var normalizedNumber = Norm(first.PermitNumber);
+                            if (string.IsNullOrWhiteSpace(normalizedNumber))
+                            {
+                                rep.AddError("شماره مجوز تحویل الزامی است؛ این تب ثبت نشد.");
+                                continue;
+                            }
+
+                            if (!seenPermitNumbers.Add(normalizedNumber))
                             {
                                 rep.Duplicates++;
                                 continue;
