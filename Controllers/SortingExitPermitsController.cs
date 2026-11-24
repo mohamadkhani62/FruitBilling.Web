@@ -1636,6 +1636,12 @@ namespace FruitBilling.Web.Controllers
                     rep.AddError($"ردیف {r}: برای «{SortingMovement.Transfer}» ستون «نوع خروج» الزامی است.");
                 }
 
+                if (basket.HasValue && basket.Value <= 0 &&
+                    rep.Errors.Count + rep.HiddenErrorCount == errorsBefore)
+                {
+                    rep.AddError($"ردیف {r}: تعداد سبد برگه باید بیشتر از صفر باشد.");
+                }
+
                 bool anyTicket = ticketNo.Length > 0 || ticketBasket.HasValue ||
                     emptyW.HasValue || grossW.HasValue || netW.HasValue;
                 if (anyTicket && rep.Errors.Count + rep.HiddenErrorCount == errorsBefore)
@@ -1643,6 +1649,10 @@ namespace FruitBilling.Web.Controllers
                     if (ticketNo.Length == 0 || !emptyW.HasValue || !grossW.HasValue)
                     {
                         rep.AddError($"ردیف {r}: برای ثبت قبض باید شماره قبض، وزن خالی و وزن پر هر سه وارد شوند.");
+                    }
+                    else if (emptyW.Value < 0)
+                    {
+                        rep.AddError($"ردیف {r}: وزن خالی نمی‌تواند منفی باشد.");
                     }
                     else if (grossW.Value <= emptyW.Value)
                     {
