@@ -7,8 +7,8 @@ namespace FruitBilling.Web.Models
     {
         public int Id { get; set; }
 
-        [Display(Name = "شماره برگ خروج")]
-        [Required(ErrorMessage = "وارد کردن شماره برگ خروج الزامی است")]
+        [Display(Name = "شماره مجوز تحویل")]
+        [Required(ErrorMessage = "وارد کردن شماره مجوز تحویل الزامی است")]
         [StringLength(15)]
         public string PermitNumber { get; set; } = string.Empty;
 
