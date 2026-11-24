@@ -226,8 +226,8 @@
         function refreshSortingItems() {
             const rows = document.querySelectorAll('#sortingItems .sorting-item');
             rows.forEach((row, index) => {
-                row.querySelector('select:nth-of-type(1)').name = `items[${index}].VarietyId`;
-                row.querySelector('select:nth-of-type(2)').name = `items[${index}].Grade`;
+                row.querySelector('.col-md-5 select').name = `items[${index}].VarietyId`;
+                row.querySelector('.col-md-3 select').name = `items[${index}].Grade`;
                 row.querySelector('input[type="number"]').name = `items[${index}].BasketCount`;
                 row.querySelector('.remove-sorting-item').disabled = rows.length === 1;
             });
