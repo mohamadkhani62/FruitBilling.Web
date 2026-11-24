@@ -16,7 +16,8 @@ namespace FruitBilling.Web.Controllers
         public async Task<IActionResult> Index()
         {
             var cycles = await _db.HarvestCycles
-                .Include(c => c.Category)
+                 .Include(c => c.Category)
+                .Include(c => c.HarvestCycleCategories).ThenInclude(x => x.Category)
                 .OrderByDescending(c => c.Year)
                 .ThenBy(c => c.CycleNumber)
                 .ToListAsync();
