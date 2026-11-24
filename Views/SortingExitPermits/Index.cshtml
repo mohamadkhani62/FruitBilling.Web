@@ -3,7 +3,7 @@
 @inject Microsoft.AspNetCore.Identity.UserManager<Microsoft.AspNetCore.Identity.IdentityUser> UserManager
 
 @{
-    ViewData["Title"] = "برگ‌های خروج سورتینگ";
+    ViewData["Title"] = "مجوزهای تحویل سورتینگ";
 
     int currentPage = Convert.ToInt32(ViewBag.Page);
     if (currentPage == 0) currentPage = 1;
@@ -88,7 +88,7 @@
     }
 </style>
 
-<h2>🍏 لیست برگه‌های خروج سورتینگ</h2>
+<h2>🍏 فهرست مجوزهای تحویل سورتینگ</h2>
 
 <!-- 🆕 انتخاب دوره برداشت -->
 <div class="card mb-3 shadow-sm" style="background: #f8f9fa;">
@@ -155,7 +155,7 @@ else
     <div>
         @if (selectedCycleId > 0)
         {
-            <a asp-action="Create" asp-route-cycleId="@selectedCycleId" class="btn btn-primary">➕ صدور برگ خروج سورتینگ</a>
+            <a asp-action="Create" asp-route-cycleId="@selectedCycleId" class="btn btn-primary">➕ صدور مجوز تحویل سورتینگ</a>
         }
         else
         {
@@ -174,7 +174,7 @@ else
         <tr>
             <th>ردیف</th>
             <th>تاریخ</th>
-            <th>برگ خروج</th>
+            <th>مجوز تحویل</th>
             <th>قبض باسکول</th>
             <th>نوع محصول</th>
             <th>درجه</th>
