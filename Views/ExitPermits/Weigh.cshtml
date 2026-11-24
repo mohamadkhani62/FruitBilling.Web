@@ -51,6 +51,7 @@
                     {
                         var ticket = existing[j];
                         <div class="ticket-row row">
+                            <input type="hidden" name="Items[@i].BasculTickets[@j].Id" value="@ticket.Id" />
                             <div class="col-md-2 mb-2">
                                 <label>شماره قبض</label>
                                 <input name="Items[@i].BasculTickets[@j].TicketNo" value="@ticket.TicketNo" class="form-control" required />
