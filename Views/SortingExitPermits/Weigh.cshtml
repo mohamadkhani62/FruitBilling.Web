@@ -1,145 +1,142 @@
-﻿@model FruitBilling.Web.Models.SortingExitPermit
+@model FruitBilling.Web.Models.SortingExitPermit
 @{
     ViewData["Title"] = "توزین سورتینگ";
-
     var currentUserId = UserManager.GetUserId(User)!;
     var perms = await PermissionService.GetEditableFieldsAsync(currentUserId, "SortingExitPermits", Model);
     bool canManageTickets = perms.GetValueOrDefault("TicketNo_Sort") || perms.GetValueOrDefault("EmptyWeight_Sort");
 }
-
 <style>
-    body {
-        direction: rtl;
-        font-family: Tahoma, sans-serif;
-    }
-
-    .card-form {
-        max-width: 900px;
-        margin: 20px auto;
-        padding: 20px;
-        border: 2px solid #ffb74d;
-        border-radius: 8px;
-        background: #fff8e1;
-    }
-
-    .info-box {
-        background: #e3f2fd;
-        padding: 15px;
-        border-radius: 8px;
-        margin-bottom: 20px;
-        font-size: 14px;
-    }
-
-    .ticket-row {
-        background: #fff;
-        padding: 10px;
-        border: 1px solid #ddd;
-        border-radius: 5px;
-        margin-bottom: 10px;
-    }
+    body { direction: rtl; font-family: Tahoma, sans-serif; }
+    .card-form { max-width: 1100px; margin: 20px auto; padding: 20px; border: 2px solid #ffb74d; border-radius: 8px; background: #fff8e1; }
+    .info-box { background: #e3f2fd; padding: 15px; border-radius: 8px; margin-bottom: 20px; font-size: 14px; }
+    .item-box { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 15px; margin-bottom: 18px; }
+    .ticket-row { background: #fafafa; padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 10px; }
 </style>
-
-<h2 style="text-align:center; color:#e65100;">⚖️ ثبت توزین برگه سورتینگ</h2>
-
+<h2 style="text-align:center; color:#e65100;">⚖️ ثبت توزین سورتینگ</h2>
 @if (!canManageTickets)
 {
-    <div class="alert alert-danger text-center mt-5" style="max-width: 800px; margin: 0 auto;">
+    <div class="alert alert-danger text-center mt-5">
         <h4>⛔ دسترسی غیرمجاز</h4>
         <p>شما دسترسی ثبت توزین برای این برگه را ندارید.</p>
         <a asp-action="Index" asp-route-cycleId="@(Model.HarvestCycleId ?? 0)" asp-route-focusId="@Model.Id" class="btn btn-secondary">بازگشت</a>
     </div>
     return;
 }
-
 <div class="card-form">
     <div class="info-box">
         <strong>شماره برگه:</strong> @Model.PermitNumber |
-        <strong>محصول / درجه:</strong> @Model.ProductType / @Model.Grade <br />
         <strong>مزرعه:</strong> @Model.FarmName |
-        <strong>پلاک:</strong> @Model.VehiclePlate
+        <strong>پلاک:</strong> @Model.VehiclePlate |
+        <strong>مقصد:</strong> @Model.Destination
     </div>
-
-    <form asp-action="Weigh" method="post">
+    <form asp-action="Weigh" method="post" id="weighForm">
         @Html.AntiForgeryToken()
         <input type="hidden" asp-for="Id" />
-
-        <h4>قبض‌های باسکول</h4>
-        <div id="ticketsContainer">
-            <div class="ticket-row row">
-                <div class="col-md-3 mb-2">
-                    <label class="form-label">شماره قبض</label>
-                    <input name="tickets[0].TicketNo" class="form-control ticket-no" required />
+        <h4>توزین به تفکیک رقم و درجه</h4>
+        @for (var i = 0; i < Model.Items.Count; i++)
+        {
+            var item = Model.Items[i];
+            var existing = item.BasculTickets?.ToList() ?? new List<FruitBilling.Web.Models.SortingBasculTicket>();
+            if (existing.Count == 0) existing.Add(new FruitBilling.Web.Models.SortingBasculTicket());
+            <div class="item-box weigh-item" data-item-index="@i" data-basket-total="@item.BasketCount">
+                <input type="hidden" name="Items[@i].Id" value="@item.Id" />
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="mb-0">@(item.Variety?.Product?.Name) - @(item.Variety?.Name) | @item.Grade</h5>
+                    <strong>کل سبد این ردیف: @item.BasketCount</strong>
                 </div>
-                <div class="col-md-2 mb-2">
-                    <label class="form-label">وزن خالی (kg)</label>
-                    <input name="tickets[0].EmptyWeight" class="form-control empty-weight" type="number" required oninput="calcNet(this)" />
+                <div class="tickets-container">
+                    @for (var j = 0; j < existing.Count; j++)
+                    {
+                        var ticket = existing[j];
+                        <div class="ticket-row row">
+                            <div class="col-md-2 mb-2">
+                                <label>شماره قبض</label>
+                                <input name="Items[@i].BasculTickets[@j].TicketNo" value="@ticket.TicketNo" class="form-control" required />
+                            </div>
+                            <div class="col-md-2 mb-2">
+                                <label>تعداد سبد قبض</label>
+                                <input name="Items[@i].BasculTickets[@j].BasketCount" value="@(existing.Count == 1 ? item.BasketCount : ticket.BasketCount)" class="form-control ticket-baskets" type="number" min="1" @(existing.Count == 1 ? "readonly" : "") required />
+                            </div>
+                            <div class="col-md-2 mb-2">
+                                <label>وزن خالی (kg)</label>
+                                <input name="Items[@i].BasculTickets[@j].EmptyWeight" value="@(ticket.Id == 0 ? "" : ticket.EmptyWeight)" class="form-control empty-weight" type="number" min="0" required oninput="calcNet(this)" />
+                            </div>
+                            <div class="col-md-2 mb-2">
+                                <label>وزن پر (kg)</label>
+                                <input name="Items[@i].BasculTickets[@j].GrossWeight" value="@(ticket.Id == 0 ? "" : ticket.GrossWeight)" class="form-control gross-weight" type="number" min="1" required oninput="calcNet(this)" />
+                            </div>
+                            <div class="col-md-2 mb-2">
+                                <label>وزن خالص (kg)</label>
+                                <input name="Items[@i].BasculTickets[@j].NetWeight" value="@(ticket.Id == 0 ? "" : ticket.NetWeight)" class="form-control net-weight" readonly />
+                            </div>
+                            <div class="col-md-2 mb-2 d-flex align-items-end">
+                                <button type="button" class="btn btn-outline-danger w-100" onclick="removeTicket(this)" @(existing.Count == 1 ? "disabled" : "")>حذف</button>
+                            </div>
+                        </div>
+                    }
                 </div>
-                <div class="col-md-2 mb-2">
-                    <label class="form-label">وزن پر (kg)</label>
-                    <input name="tickets[0].GrossWeight" class="form-control gross-weight" type="number" required oninput="calcNet(this)" />
-                </div>
-                <div class="col-md-3 mb-2">
-                    <label class="form-label">وزن خالص (kg)</label>
-                    <input name="tickets[0].NetWeight" class="form-control net-weight" type="number" readonly style="background:#e9ecef;" />
-                </div>
-                <div class="col-md-2 mb-2 d-flex align-items-end">
-                    <button type="button" class="btn btn-danger w-100" onclick="removeRow(this)" style="display:none;">حذف</button>
-                </div>
+                <button type="button" class="btn btn-outline-primary btn-sm" onclick="addTicket(this)">➕ افزودن قبض برای این درجه</button>
+                <div class="small text-muted mt-2">مجموع تعداد سبد قبض‌ها باید دقیقاً برابر تعداد سبد این ردیف باشد.</div>
             </div>
-        </div>
-
-        <button type="button" class="btn btn-outline-primary btn-sm mb-3" onclick="addTicket()">➕ افزودن قبض دیگر</button>
-
+        }
+        @if (Model.Items.Count == 0)
+        {
+            <div class="alert alert-warning">برای این برگه هنوز ردیف رقم/درجه ثبت نشده است.</div>
+        }
         <div class="alert alert-success text-center mt-3">
             <h4>مجموع وزن خالص: <span id="totalNetWeightDisplay">0</span> کیلوگرم</h4>
         </div>
-
         <div class="text-end mt-4">
-            <button type="submit" class="btn btn-success">✅ ثبت نهایی و صدور مجوز حرکت</button>
+            <button type="submit" class="btn btn-success" @(Model.Items.Count == 0 ? "disabled" : "")>✅ ثبت توزین و صدور مجوز حرکت</button>
             <a asp-action="Index" asp-route-cycleId="@(Model.HarvestCycleId ?? 0)" asp-route-focusId="@Model.Id" class="btn btn-secondary">بازگشت</a>
         </div>
     </form>
 </div>
-
 @section Scripts {
-    <script>
-        let ticketIndex = 1;
-        function addTicket() {
-            const container = document.getElementById('ticketsContainer');
-            const newRow = document.createElement('div');
-            newRow.className = 'ticket-row row';
-            newRow.innerHTML = `
-                        <div class="col-md-3 mb-2"><label>شماره قبض</label><input name="tickets[${ticketIndex}].TicketNo" class="form-control ticket-no" required /></div>
-                        <div class="col-md-2 mb-2"><label>وزن خالی (kg)</label><input name="tickets[${ticketIndex}].EmptyWeight" class="form-control empty-weight" type="number" required oninput="calcNet(this)" /></div>
-                        <div class="col-md-2 mb-2"><label>وزن پر (kg)</label><input name="tickets[${ticketIndex}].GrossWeight" class="form-control gross-weight" type="number" required oninput="calcNet(this)" /></div>
-                        <div class="col-md-3 mb-2"><label>وزن خالص (kg)</label><input name="tickets[${ticketIndex}].NetWeight" class="form-control net-weight" type="number" readonly style="background:#e9ecef;" /></div>
-                        <div class="col-md-2 mb-2 d-flex align-items-end"><button type="button" class="btn btn-danger w-100" onclick="removeRow(this)">حذف</button></div>
-                    `;
-            container.appendChild(newRow);
-            ticketIndex++;
-            toggleDeleteButtons();
-        }
-        function removeRow(btn) { btn.closest('.ticket-row').remove(); toggleDeleteButtons(); calcTotal(); }
-        function toggleDeleteButtons() {
-            const rows = document.querySelectorAll('.ticket-row');
-            rows.forEach((row, index) => {
-                const delBtn = row.querySelector('button.btn-danger');
-                if (delBtn) delBtn.style.display = index === 0 ? 'none' : 'block';
+<script>
+    function reindexTickets(itemBox) {
+        const itemIndex = itemBox.dataset.itemIndex;
+        const rows = itemBox.querySelectorAll('.ticket-row');
+        rows.forEach((row, index) => {
+            row.querySelectorAll('input').forEach(input => {
+                const field = input.name.substring(input.name.lastIndexOf('.') + 1);
+                input.name = `Items[${itemIndex}].BasculTickets[${index}].${field}`;
             });
-        }
-        function calcNet(input) {
-            const row = input.closest('.ticket-row');
-            const empty = parseInt(row.querySelector('.empty-weight').value) || 0;
-            const gross = parseInt(row.querySelector('.gross-weight').value) || 0;
-            const netField = row.querySelector('.net-weight');
-            if (gross > empty) netField.value = gross - empty;
-            else netField.value = '';
-            calcTotal();
-        }
-        function calcTotal() {
-            let total = 0;
-            document.querySelectorAll('.net-weight').forEach(input => { total += parseInt(input.value) || 0; });
-            document.getElementById('totalNetWeightDisplay').innerText = total;
-        }
-    </script>
+            const basketInput = row.querySelector('.ticket-baskets');
+            basketInput.readOnly = rows.length === 1;
+            if (rows.length === 1) basketInput.value = itemBox.dataset.basketTotal;
+            row.querySelector('button').disabled = rows.length === 1;
+        });
+    }
+    function addTicket(button) {
+        const box = button.closest('.weigh-item');
+        const container = box.querySelector('.tickets-container');
+        const clone = container.querySelector('.ticket-row').cloneNode(true);
+        clone.querySelectorAll('input').forEach(input => input.value = '');
+        container.appendChild(clone);
+        reindexTickets(box);
+        calcTotal();
+    }
+    function removeTicket(button) {
+        const box = button.closest('.weigh-item');
+        if (box.querySelectorAll('.ticket-row').length <= 1) return;
+        button.closest('.ticket-row').remove();
+        reindexTickets(box);
+        calcTotal();
+    }
+    function calcNet(input) {
+        const row = input.closest('.ticket-row');
+        const empty = parseInt(row.querySelector('.empty-weight').value) || 0;
+        const gross = parseInt(row.querySelector('.gross-weight').value) || 0;
+        row.querySelector('.net-weight').value = gross > empty ? gross - empty : '';
+        calcTotal();
+    }
+    function calcTotal() {
+        let total = 0;
+        document.querySelectorAll('.net-weight').forEach(input => total += parseInt(input.value) || 0);
+        document.getElementById('totalNetWeightDisplay').innerText = total.toLocaleString('en-US');
+    }
+    document.querySelectorAll('.weigh-item').forEach(reindexTickets);
+    calcTotal();
+</script>
 }
