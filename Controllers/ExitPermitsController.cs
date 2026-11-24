@@ -184,6 +184,8 @@ namespace FruitBilling.Web.Controllers
             if (!ModelState.IsValid)
             {
                 await LoadDropdownsForCycle(model.HarvestCycleId ?? 0);
+                ViewBag.FarmNameInput = farmNameInput;
+                ViewBag.PlotNameInput = plotNameInput;
                 return View(model);
             }
 
