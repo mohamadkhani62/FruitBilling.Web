@@ -275,10 +275,8 @@
     </form>
 
     <!-- قبض‌های مستقیم روی سربرگ فقط برای برگه‌های قدیمیِ بدون ردیف نگهداری شده‌اند. -->
-    @if (Model.Items == null || !Model.Items.Any())
+    @if ((Model.Items == null || !Model.Items.Any()) && Model.BasculTickets != null && Model.BasculTickets.Any())
     {
-        @if (Model.BasculTickets != null && Model.BasculTickets.Any())
-        {
         <div class="mt-5 border-top pt-4">
             <h4>⚖️ قبض‌های باسکول ثبت شده</h4>
             <table class="table table-bordered text-center mt-3">
@@ -346,9 +344,8 @@
                 </div>
             }
         </div>
-        }
     }
-    else
+    else if (Model.Items != null && Model.Items.Any())
     {
         <div class="alert alert-info mt-4">
             قبض‌های این مجوز باید به تفکیک هر ردیف رقم و درجه ثبت شوند.
