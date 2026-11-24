@@ -729,7 +729,10 @@ namespace FruitBilling.Web.Controllers
         public async Task<IActionResult> Print(int id)
         {
             var permit = await _db.FruitExitPermits
-                .Include(p => p.Farm).Include(p => p.Plot).Include(p => p.BasculTickets)
+                .Include(p => p.Farm).Include(p => p.Plot)
+                .Include(p => p.Items).ThenInclude(x => x.Variety).ThenInclude(v => v.Product)
+                .Include(p => p.Items).ThenInclude(x => x.BasculTickets)
+                .Include(p => p.BasculTickets)
                 .FirstOrDefaultAsync(p => p.Id == id);
 
             if (permit == null) return NotFound();
