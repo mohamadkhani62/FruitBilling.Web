@@ -15,6 +15,20 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: ${{ github.run_id }}Ci!SqlAa
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "grep -q 'SQL Server is now ready for client connections' /var/opt/mssql/log/errorlog || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
+          --health-start-period 30s
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -55,6 +69,12 @@ jobs:
       - name: Verify generated migration builds
         if: github.event_name == 'push' && github.ref == 'refs/heads/feature/multi-product-exit-permits'
         run: dotnet build FruitBilling.Web.csproj --configuration Release --no-restore
+
+      - name: Apply migrations to disposable SQL Server
+        if: github.event_name == 'push' && github.ref == 'refs/heads/feature/multi-product-exit-permits'
+        env:
+          ConnectionStrings__Default: "Server=localhost,1433;Database=FruitBillingCiDb;User Id=sa;Password=${{ github.run_id }}Ci!SqlAa;TrustServerCertificate=True;Encrypt=False"
+        run: dotnet-ef database update --project FruitBilling.Web.csproj --context AppDbContext
 
       - name: Generate idempotent database SQL script
         if: github.event_name == 'push' && github.ref == 'refs/heads/feature/multi-product-exit-permits'
