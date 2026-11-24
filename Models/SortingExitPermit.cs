@@ -80,7 +80,10 @@ namespace FruitBilling.Web.Models
 
         public DateTime CreatedAt { get; set; } = DateTime.Now;
 
-        // ارتباط یک به چند با قبض‌های باسکول
+        // ردیف‌های رقم/درجه در این برگ
+        public List<SortingExitPermitItem> Items { get; set; } = new();
+
+        // ارتباط قدیمی قبض‌ها برای سازگاری تا زمان مهاجرت کامل کنترلرها
         public List<SortingBasculTicket> BasculTickets { get; set; } = new();
     }
 }
