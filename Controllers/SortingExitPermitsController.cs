@@ -713,7 +713,9 @@ namespace FruitBilling.Web.Controllers
             }
 
             // ۳. پیدا کردن رکورد
-            var permit = await _db.SortingExitPermits.Include(p => p.BasculTickets).FirstOrDefaultAsync(p => p.Id == id);
+            var permit = await _db.SortingExitPermits.Include(p => p.Items).ThenInclude(x => x.Variety).ThenInclude(v => v.Product)
+                .Include(p => p.Items).ThenInclude(x => x.BasculTickets)
+                .Include(p => p.BasculTickets).FirstOrDefaultAsync(p => p.Id == id);
             if (permit == null) return NotFound();
 
             // ۴. بررسی وضعیت و اعمال تأیید
@@ -747,76 +749,54 @@ namespace FruitBilling.Web.Controllers
         [HttpGet]
         public async Task<IActionResult> Export(int? cycleId)
         {
-            // با cycleId فقط همان دوره (یک تب)؛ بدون cycleId همه‌ی دوره‌ها (یک تب برای هر دوره)
-            var exportQuery = _db.SortingExitPermits.Include(p => p.BasculTickets).AsQueryable();
-            if (cycleId.HasValue) exportQuery = FilterByCycle(exportQuery, cycleId.Value);
-            var list = await exportQuery.OrderBy(p => p.Date).ThenBy(p => p.Id).ToListAsync();
-
-            var cycles = await _db.HarvestCycles.AsNoTracking()
-                .OrderByDescending(x => x.Year)
-                .ThenByDescending(x => x.CycleNumber)
-                .ToListAsync();
-
+            var query = _db.SortingExitPermits.Include(p => p.Items).ThenInclude(x => x.Variety).ThenInclude(v => v.Product)
+                .Include(p => p.Items).ThenInclude(x => x.BasculTickets).Include(p => p.BasculTickets).AsQueryable();
+            if (cycleId.HasValue) query = FilterByCycle(query, cycleId.Value);
+            var permits = await query.OrderBy(p => p.Date).ThenBy(p => p.Id).ToListAsync();
+            var cycles = await _db.HarvestCycles.AsNoTracking().OrderByDescending(x => x.Year).ThenByDescending(x => x.CycleNumber).ToListAsync();
             using var wb = new XLWorkbook();
             var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-            // نام تب = نام دوره برداشت (مثل فایل ورودی)؛ نام دوره در ردیف‌ها تکرار نمی‌شود
-            void WriteSheet(string title, List<SortingExitPermit> items)
+            void WriteSheet(string title, List<SortingExitPermit> records)
             {
                 var ws = wb.AddWorksheet(SafeSheetName(title, usedNames));
-
-                string[] headers = { "ردیف", "شماره برگ خروج", "تاریخ", "تعداد سبد", "نوع محصول", "درجه", "نام مزرعه", "شماره پلاک", "مقصد", "نوع فروش", "مبدا", "پیمانکار سورت", "توضیحات", "وزن خالص", "نوع خروج" };
-                for (int i = 0; i < headers.Length; i++) ws.Cell(1, i + 1).Value = headers[i];
-
-                for (int i = 0; i < items.Count; i++)
+                string[] headers = { "ردیف", "شماره برگ خروج", "تاریخ", "مزرعه", "محصول", "رقم", "درجه", "تعداد سبد ردیف", "مقصد", "نوع فروش", "مبدا", "پیمانکار سورت", "پلاک", "شماره قبض", "تعداد سبد قبض", "وزن خالی (kg)", "وزن پر (kg)", "وزن خالص (kg)", "نوع خروج", "توضیحات" };
+                for (int c = 0; c < headers.Length; c++) ws.Cell(1, c + 1).Value = headers[c];
+                int row = 2, sequence = 1;
+                void WriteRow(SortingExitPermit p, SortingExitPermitItem? item, SortingBasculTicket? ticket)
                 {
-                    var r = items[i];
-                    int row = i + 2;
-                    var totalNet = r.BasculTickets?.Sum(t => t.NetWeight) ?? 0;
-
-                    ws.Cell(row, 1).Value = i + 1;
-                    ws.Cell(row, 2).Value = r.PermitNumber;
-                    ws.Cell(row, 3).Value = r.Date;
-                    ws.Cell(row, 4).Value = r.BasketCount;
-                    ws.Cell(row, 5).Value = r.ProductType;
-                    ws.Cell(row, 6).Value = r.Grade;
-                    ws.Cell(row, 7).Value = r.FarmName;
-                    ws.Cell(row, 8).Value = r.VehiclePlate;
-                    ws.Cell(row, 9).Value = r.Destination;
-                    ws.Cell(row, 10).Value = r.SaleType;
-                    ws.Cell(row, 11).Value = r.Source;
-                    ws.Cell(row, 12).Value = r.SortingContractor;
-                    ws.Cell(row, 13).Value = r.Description;
-                    if (totalNet > 0) ws.Cell(row, 14).Value = totalNet;
-                    ws.Cell(row, 15).Value = SortingMovement.ExitLabel(r.SaleType, r.MovementType);
+                    ws.Cell(row, 1).Value = sequence++; ws.Cell(row, 2).Value = p.PermitNumber; ws.Cell(row, 3).Value = p.Date; ws.Cell(row, 4).Value = p.FarmName;
+                    ws.Cell(row, 5).Value = item?.Variety?.Product?.Name ?? p.ProductType; ws.Cell(row, 6).Value = item?.Variety?.Name;
+                    ws.Cell(row, 7).Value = item?.Grade ?? p.Grade; ws.Cell(row, 8).Value = item?.BasketCount ?? p.BasketCount;
+                    ws.Cell(row, 9).Value = p.Destination; ws.Cell(row, 10).Value = p.SaleType; ws.Cell(row, 11).Value = p.Source;
+                    ws.Cell(row, 12).Value = p.SortingContractor; ws.Cell(row, 13).Value = p.VehiclePlate; ws.Cell(row, 14).Value = ticket?.TicketNo;
+                    if (ticket?.BasketCount is int count) ws.Cell(row, 15).Value = count;
+                    if (ticket != null) { ws.Cell(row, 16).Value = ticket.EmptyWeight; ws.Cell(row, 17).Value = ticket.GrossWeight; ws.Cell(row, 18).Value = ticket.NetWeight; }
+                    ws.Cell(row, 19).Value = SortingMovement.ExitLabel(p.SaleType, p.MovementType); ws.Cell(row, 20).Value = p.Description; row++;
                 }
-
-                ws.RightToLeft = true;
-                ws.SheetView.FreezeRows(1);
+                foreach (var p in records)
+                {
+                    if (p.Items?.Count > 0)
+                        foreach (var item in p.Items.OrderBy(x => x.Id))
+                        {
+                            var tickets = item.BasculTickets?.OrderBy(t => t.Id).ToList() ?? new List<SortingBasculTicket>();
+                            if (tickets.Count == 0) WriteRow(p, item, null); else foreach (var t in tickets) WriteRow(p, item, t);
+                        }
+                    else
+                    {
+                        var tickets = p.BasculTickets?.OrderBy(t => t.Id).ToList() ?? new List<SortingBasculTicket>();
+                        if (tickets.Count == 0) WriteRow(p, null, null); else foreach (var t in tickets) WriteRow(p, null, t);
+                    }
+                }
+                ws.RightToLeft = true; ws.SheetView.FreezeRows(1); ws.Range(1, 1, 1, headers.Length).Style.Font.Bold = true; ws.Columns().AdjustToContents();
             }
-
-            foreach (var cy in cycles)
-            {
-                // در خروجی تک‌دوره، تب همان دوره همیشه ساخته می‌شود (حتی اگر خالی باشد)
-                var items = list.Where(p => p.HarvestCycleId == cy.Id).ToList();
-                if (items.Count == 0 && cycleId != cy.Id) continue;
-                WriteSheet(cy.Name, items);
-            }
-
-            // برگه‌های قدیمی بدون دوره
-            var legacy = list.Where(p => p.HarvestCycleId == null).ToList();
-            if (legacy.Count > 0 || cycleId == 0)
-                WriteSheet("بدون دوره", legacy);
-
-            if (wb.Worksheets.Count == 0)
-                WriteSheet("SortingPermits", new List<SortingExitPermit>());
-
-            using var ms = new MemoryStream();
-            wb.SaveAs(ms);
+            foreach (var cycle in cycles) { var records = permits.Where(p => p.HarvestCycleId == cycle.Id).ToList(); if (records.Count == 0 && cycleId != cycle.Id) continue; WriteSheet(cycle.Name, records); }
+            var legacy = permits.Where(p => p.HarvestCycleId == null).ToList(); if (legacy.Count > 0 || cycleId == 0) WriteSheet("بدون دوره", legacy);
+            if (wb.Worksheets.Count == 0) WriteSheet("خروج سورتینگ", new List<SortingExitPermit>());
+            using var ms = new MemoryStream(); wb.SaveAs(ms);
             return File(ms.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", $"SortingPermits-{DateTime.Now:yyyyMMddHHmm}.xlsx");
         }
 
-        // ==========================================
+                // ==========================================
         // 📤 ورود یکپارچه اکسل سورتینگ (GET)
         // ==========================================
         [HttpGet]
