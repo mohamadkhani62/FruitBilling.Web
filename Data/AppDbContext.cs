@@ -160,6 +160,12 @@ namespace FruitBilling.Web.Data
             mb.Entity<FruitExitPermit>()
                 .HasOne(p => p.HarvestCycle).WithMany(c => c.FruitExitPermits).HasForeignKey(p => p.HarvestCycleId).OnDelete(DeleteBehavior.NoAction);
 
+            // شماره مجوز تحویل در هر دوره برداشت یکتا است؛ مقادیر خالی داده‌های قدیمی مستثنا هستند.
+            mb.Entity<SortingExitPermit>()
+                .HasIndex(p => new { p.HarvestCycleId, p.PermitNumber })
+                .IsUnique()
+                .HasFilter("[HarvestCycleId] IS NOT NULL AND [PermitNumber] <> ''");
+
             mb.Entity<SortingExitPermit>()
                 .HasOne(p => p.Product).WithMany().HasForeignKey(p => p.ProductId).OnDelete(DeleteBehavior.NoAction);
             mb.Entity<SortingExitPermit>()
