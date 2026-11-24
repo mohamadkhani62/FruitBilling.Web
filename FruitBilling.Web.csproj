@@ -23,6 +23,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Test source files must not be compiled into the web application. -->
+    <Compile Remove="Tests/**/*.cs" />
+    <None Remove="Tests/**" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Folder Include="Views\DashBoard\" />
     <Folder Include="Views\YieldEstimates\" />
     <Folder Include="wwwroot\lib\Cesium\" />
