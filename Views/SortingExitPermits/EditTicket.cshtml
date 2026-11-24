@@ -3,8 +3,12 @@
     ViewData["Title"] = "ویرایش قبض باسکول سورتینگ";
 
     var currentUserId = UserManager.GetUserId(User)!;
-    var perms = await PermissionService.GetEditableFieldsAsync(currentUserId, "SortingExitPermits", new FruitBilling.Web.Models.SortingExitPermit());
-    bool canManage = perms.GetValueOrDefault("TicketNo_Sort") || perms.GetValueOrDefault("EmptyWeight_Sort");
+    var perms = ViewBag.TicketPermissions as Dictionary<string, bool>
+        ?? await PermissionService.GetEditableFieldsAsync(currentUserId, "SortingExitPermits", new FruitBilling.Web.Models.SortingExitPermit());
+    bool canEditTicketNo = perms.GetValueOrDefault("TicketNo_Sort");
+    bool canEditEmptyWeight = perms.GetValueOrDefault("EmptyWeight_Sort");
+    bool canEditGrossWeight = perms.GetValueOrDefault("GrossWeight_Sort");
+    bool canManage = canEditTicketNo || canEditEmptyWeight || canEditGrossWeight;
 }
 
 <style>
@@ -58,17 +62,17 @@
 
         <div class="mb-3">
             <label asp-for="TicketNo" class="form-label">شماره قبض باسکول</label>
-            <input asp-for="TicketNo" class="form-control @(perms.GetValueOrDefault("TicketNo_Sort") ? "" : "readonly-field")" readonly="@(!perms.GetValueOrDefault("TicketNo_Sort"))" required />
+            <input asp-for="TicketNo" class="form-control @(canEditTicketNo ? "" : "readonly-field")" readonly="@(!canEditTicketNo)" required />
         </div>
 
         <div class="mb-3">
             <label asp-for="EmptyWeight" class="form-label">وزن خالی (kg)</label>
-            <input asp-for="EmptyWeight" id="emptyWeight" class="form-control @(perms.GetValueOrDefault("EmptyWeight_Sort") ? "" : "readonly-field")" readonly="@(!perms.GetValueOrDefault("EmptyWeight_Sort"))" type="number" required oninput="calcNet()" />
+            <input asp-for="EmptyWeight" id="emptyWeight" class="form-control @(canEditEmptyWeight ? "" : "readonly-field")" readonly="@(!canEditEmptyWeight)" type="number" required oninput="calcNet()" />
         </div>
 
         <div class="mb-3">
             <label asp-for="GrossWeight" class="form-label">وزن پر (kg)</label>
-            <input asp-for="GrossWeight" id="grossWeight" class="form-control @(perms.GetValueOrDefault("GrossWeight_Sort") ? "" : "readonly-field")" readonly="@(!perms.GetValueOrDefault("GrossWeight_Sort"))" type="number" required oninput="calcNet()" />
+            <input asp-for="GrossWeight" id="grossWeight" class="form-control @(canEditGrossWeight ? "" : "readonly-field")" readonly="@(!canEditGrossWeight)" type="number" required oninput="calcNet()" />
         </div>
 
         <div class="mb-3">
