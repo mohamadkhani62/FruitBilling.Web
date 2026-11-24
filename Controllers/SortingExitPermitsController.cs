@@ -116,7 +116,8 @@ namespace FruitBilling.Web.Controllers
 
             // 🆕 صدور برگه فقط داخل یک دوره برداشت معتبر ممکن است
             var cycle = cycleId.HasValue && cycleId.Value > 0
-                ? await _db.HarvestCycles.AsNoTracking().FirstOrDefaultAsync(x => x.Id == cycleId.Value)
+                ? await _db.HarvestCycles.AsNoTracking().Include(x => x.HarvestCycleCategories)
+                    .FirstOrDefaultAsync(x => x.Id == cycleId.Value)
                 : null;
             if (cycle == null)
             {
@@ -127,6 +128,7 @@ namespace FruitBilling.Web.Controllers
             var fa = new System.Globalization.PersianCalendar();
             var today = DateTime.Now;
             ViewBag.CurrentCycle = cycle;
+            await LoadVarietiesForCycleAsync(cycle.Id);
             return View(new SortingExitPermit
             {
                 Date = $"{fa.GetYear(today):0000}/{fa.GetMonth(today):00}/{fa.GetDayOfMonth(today):00}",
@@ -136,7 +138,7 @@ namespace FruitBilling.Web.Controllers
         }
 
         [HttpPost, ValidateAntiForgeryToken]
-        public async Task<IActionResult> Create(SortingExitPermit model)
+        public async Task<IActionResult> Create(SortingExitPermit model, List<SortingExitPermitItem> items)
         {
             var userId = _userManager.GetUserId(User);
             if (string.IsNullOrEmpty(userId)) return Unauthorized();
@@ -150,13 +152,31 @@ namespace FruitBilling.Web.Controllers
 
             // 🆕 دوره باید معتبر باشد
             var cycle = model.HarvestCycleId.HasValue
-                ? await _db.HarvestCycles.AsNoTracking().FirstOrDefaultAsync(x => x.Id == model.HarvestCycleId.Value)
+                ? await _db.HarvestCycles.Include(x => x.HarvestCycleCategories)
+                    .FirstOrDefaultAsync(x => x.Id == model.HarvestCycleId.Value)
                 : null;
             if (cycle == null)
             {
                 TempData["Warning"] = "دوره برداشت نامعتبر است. لطفاً دوباره از لیست دوره را انتخاب کنید.";
                 return RedirectToAction(nameof(Index));
             }
+
+            items ??= new List<SortingExitPermitItem>();
+            items = items.Where(x => x.VarietyId > 0 || x.BasketCount > 0 || !string.IsNullOrWhiteSpace(x.Grade)).ToList();
+            if (items.Count == 0)
+                ModelState.AddModelError("Items", "حداقل یک ردیف رقم و درجه اضافه کنید.");
+            if (items.Any(x => x.VarietyId <= 0 || x.BasketCount <= 0 || string.IsNullOrWhiteSpace(x.Grade)))
+                ModelState.AddModelError("Items", "برای هر ردیف، رقم، درجه و تعداد سبد معتبر وارد کنید.");
+
+            var categoryIds = cycle.HarvestCycleCategories.Select(x => x.CategoryId).ToArray();
+            if (categoryIds.Length == 0 && cycle.CategoryId.HasValue)
+                categoryIds = new[] { cycle.CategoryId.Value };
+            var varietyIds = items.Select(x => x.VarietyId).Distinct().ToArray();
+            var varieties = await _db.ProductVarieties.Include(v => v.Product)
+                .Where(v => varietyIds.Contains(v.Id)).ToListAsync();
+            if (varieties.Count != varietyIds.Length || varieties.Any(v => v.Product == null ||
+                (categoryIds.Length > 0 && !categoryIds.Contains(v.Product.CategoryId ?? 0))))
+                ModelState.AddModelError("Items", "یکی از ارقام انتخاب‌شده متعلق به گونه‌های این دوره برداشت نیست.");
 
             // برای «جابجایی» باید نوع خروج مشخص شود (اگر کاربر به این فیلد دسترسی دارد)
             if (perms.GetValueOrDefault("SaleType") && perms.GetValueOrDefault("MovementType")
@@ -169,6 +189,7 @@ namespace FruitBilling.Web.Controllers
             if (!ModelState.IsValid)
             {
                 ViewBag.CurrentCycle = cycle;
+                await LoadVarietiesForCycleAsync(cycle.Id);
                 return View(model);
             }
 
@@ -194,6 +215,19 @@ namespace FruitBilling.Web.Controllers
                 SortingContractor = perms.GetValueOrDefault("SortingContractor") ? model.SortingContractor : null,
                 Description = perms.GetValueOrDefault("Description") ? model.Description : null
             };
+
+            foreach (var item in items)
+            {
+                item.SortingExitPermit = newPermit;
+                item.Variety = null!;
+            }
+            var firstVariety = varieties.First(v => v.Id == items[0].VarietyId);
+            newPermit.Items = items;
+            newPermit.VarietyId = firstVariety.Id;
+            newPermit.ProductId = firstVariety.ProductId;
+            newPermit.ProductType = firstVariety.Product?.Name;
+            newPermit.Grade = items[0].Grade;
+            newPermit.BasketCount = items.Sum(x => x.BasketCount);
 
             _db.SortingExitPermits.Add(newPermit);
             await _db.SaveChangesAsync();
@@ -1175,6 +1209,28 @@ namespace FruitBilling.Web.Controllers
             => cycleId == 0
                 ? q.Where(p => p.HarvestCycleId == null)
                 : q.Where(p => p.HarvestCycleId == cycleId);
+
+        private async Task LoadVarietiesForCycleAsync(int cycleId)
+        {
+            var cycle = await _db.HarvestCycles.Include(x => x.HarvestCycleCategories)
+                .FirstOrDefaultAsync(x => x.Id == cycleId);
+            var categoryIds = cycle?.HarvestCycleCategories.Select(x => x.CategoryId).ToArray()
+                ?? Array.Empty<int>();
+            if (categoryIds.Length == 0 && cycle?.CategoryId is int legacyCategoryId)
+                categoryIds = new[] { legacyCategoryId };
+
+            var query = _db.ProductVarieties.Include(v => v.Product).AsQueryable();
+            if (categoryIds.Length > 0)
+                query = query.Where(v => v.Product != null && v.Product.CategoryId.HasValue
+                    && categoryIds.Contains(v.Product.CategoryId.Value));
+
+            var values = await query.Select(v => new
+            {
+                Id = v.Id,
+                DisplayName = v.Product!.Name + " - " + v.Name
+            }).ToListAsync();
+            ViewBag.VarietyList = new SelectList(values, "Id", "DisplayName");
+        }
 
         private async Task LoadCyclesAsync(int? selectedId, bool includeNone)
         {
