@@ -552,10 +552,26 @@ namespace FruitBilling.Web.Controllers
                     var farmName = permit.Farm?.Name;
                     if (!string.IsNullOrWhiteSpace(farmName))
                     {
-                        var alreadyExists = await _db.SortingExitPermits.AnyAsync(s =>
-                            s.HarvestCycleId == permit.HarvestCycleId &&
-                            s.PermitNumber == permit.PermitNumber &&
-                            s.FarmName == farmName);
+                        var sameCyclePermits = await _db.SortingExitPermits.AsNoTracking()
+                            .Where(s => s.HarvestCycleId == permit.HarvestCycleId)
+                            .Select(s => new { s.PermitNumber, s.FarmName })
+                            .ToListAsync();
+
+                        var sameNumberPermit = string.IsNullOrWhiteSpace(permit.PermitNumber)
+                            ? null
+                            : sameCyclePermits.FirstOrDefault(s =>
+                                Norm(s.PermitNumber) == Norm(permit.PermitNumber));
+
+                        // استفاده از یک شماره برای دو مزرعه در یک دوره مجاز نیست.
+                        if (sameNumberPermit != null && Norm(sameNumberPermit.FarmName) != Norm(farmName))
+                        {
+                            await transaction.RollbackAsync();
+                            TempData["Warning"] = "تأیید مقصد انجام نشد؛ شماره مجوز تحویل این برگه قبلاً در همین دوره برای مزرعه دیگری استفاده شده است. ابتدا شماره برگه را اصلاح کنید.";
+                            return RedirectToAction(nameof(Index), new { cycleId = cycleId ?? permit.HarvestCycleId, focusId = permit.Id });
+                        }
+
+                        // اگر همین شماره قبلاً برای همین مزرعه منتقل شده باشد، عملیات تکراری ایجاد نمی‌کنیم.
+                        var alreadyExists = sameNumberPermit != null;
 
                         if (!alreadyExists)
                         {
