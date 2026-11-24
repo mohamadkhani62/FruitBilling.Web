@@ -540,26 +540,65 @@ namespace FruitBilling.Web.Controllers
 
             if (permit.Status == "توزین شده")
             {
-                permit.Status = "تأیید شده در مقصد";
-                await _db.SaveChangesAsync();
-                TempData["Msg"] = "تأیید مقصد با موفقیت ثبت شد.";
+                // تأیید مقصد و ایجاد برگه سورتینگ در یک تراکنش انجام می‌شود تا
+                // در صورت خطای انتقال، وضعیت برگه مزرعه نیمه‌کاره تغییر نکند.
+                await using var transaction = await _db.Database.BeginTransactionAsync();
+                var transferredToSorting = false;
 
-                // انتقال به سورتینگ (اگر مقصد بازار بود)
-                if (!string.IsNullOrEmpty(permit.Destination) && (permit.Destination.Contains("بازار") || permit.Destination.Contains("فروش")))
+                // انتقال به سورتینگ فقط برای مقصد بازار/فروش انجام می‌شود.
+                if (!string.IsNullOrWhiteSpace(permit.Destination) &&
+                    (permit.Destination.Contains("بازار") || permit.Destination.Contains("فروش")))
                 {
-                    string? farmName = permit.Farm?.Name;
-                    if (!string.IsNullOrEmpty(farmName))
+                    var farmName = permit.Farm?.Name;
+                    if (!string.IsNullOrWhiteSpace(farmName))
                     {
-                        var alreadyExists = await _db.SortingExitPermits
-                            .AnyAsync(s => s.PermitNumber == permit.PermitNumber && s.FarmName == farmName);
+                        var alreadyExists = await _db.SortingExitPermits.AnyAsync(s =>
+                            s.HarvestCycleId == permit.HarvestCycleId &&
+                            s.PermitNumber == permit.PermitNumber &&
+                            s.FarmName == farmName);
 
                         if (!alreadyExists)
                         {
+                            var sourceItems = permit.Items?.OrderBy(x => x.Id).ToList()
+                                ?? new List<FruitExitPermitItem>();
+
+                            // پشتیبانی از برگه‌های قدیمی که هنوز Item ندارند.
+                            if (sourceItems.Count == 0 && permit.VarietyId.HasValue)
+                            {
+                                sourceItems.Add(new FruitExitPermitItem
+                                {
+                                    VarietyId = permit.VarietyId.Value,
+                                    BasketCount = permit.BasketCount ?? 0,
+                                    BasketType = permit.BasketType,
+                                    HarvestMethod = permit.HarvestMethod
+                                });
+                            }
+
+                            if (sourceItems.Count == 0 || sourceItems.Any(x => x.VarietyId <= 0 || x.BasketCount <= 0))
+                            {
+                                await transaction.RollbackAsync();
+                                TempData["Warning"] = "تأیید مقصد انجام نشد؛ برای انتقال به سورتینگ باید حداقل یک ردیف رقم با تعداد سبد معتبر وجود داشته باشد.";
+                                return RedirectToAction(nameof(Index), new { cycleId = cycleId ?? permit.HarvestCycleId, focusId = permit.Id });
+                            }
+
+                            var varietyIds = sourceItems.Select(x => x.VarietyId).Distinct().ToArray();
+                            var validVarietyIds = await _db.ProductVarieties
+                                .Where(v => varietyIds.Contains(v.Id))
+                                .Select(v => v.Id)
+                                .ToListAsync();
+                            if (validVarietyIds.Count != varietyIds.Length)
+                            {
+                                await transaction.RollbackAsync();
+                                TempData["Warning"] = "تأیید مقصد انجام نشد؛ یکی از ارقام برگ خروج دیگر در اطلاعات پایه موجود نیست.";
+                                return RedirectToAction(nameof(Index), new { cycleId = cycleId ?? permit.HarvestCycleId, focusId = permit.Id });
+                            }
+
                             var newSortingPermit = new SortingExitPermit
                             {
                                 PermitNumber = permit.PermitNumber,
                                 Date = permit.Date,
-                                BasketCount = permit.BasketCount,
+                                HarvestCycleId = permit.HarvestCycleId,
+                                BasketCount = sourceItems.Sum(x => x.BasketCount),
                                 ProductType = permit.ProductType,
                                 Grade = "بدون سورت",
                                 FarmName = farmName,
@@ -573,26 +612,62 @@ namespace FruitBilling.Web.Controllers
                                 CreatedAt = DateTime.Now
                             };
 
-                            if (permit.BasculTickets != null)
+                            // قبض‌های قدیمیِ متصل به سربرگ، در صورت نبود قبض در ردیف‌ها،
+                            // به اولین ردیف منتقل می‌شوند تا هیچ قبضی گم نشود.
+                            var itemTicketsExist = sourceItems.Any(x => x.BasculTickets?.Count > 0);
+                            for (var index = 0; index < sourceItems.Count; index++)
                             {
-                                foreach (var t in permit.BasculTickets)
+                                var sourceItem = sourceItems[index];
+                                var sortingItem = new SortingExitPermitItem
                                 {
-                                    newSortingPermit.BasculTickets.Add(new SortingBasculTicket
+                                    VarietyId = sourceItem.VarietyId,
+                                    Grade = "بدون سورت",
+                                    BasketCount = sourceItem.BasketCount
+                                };
+
+                                var tickets = sourceItem.BasculTickets?.OrderBy(t => t.Id).ToList()
+                                    ?? new List<BasculTicket>();
+                                if (!itemTicketsExist && index == 0)
+                                    tickets = permit.BasculTickets?.OrderBy(t => t.Id).ToList()
+                                        ?? new List<BasculTicket>();
+
+                                foreach (var ticket in tickets)
+                                {
+                                    sortingItem.BasculTickets.Add(new SortingBasculTicket
                                     {
-                                        TicketNo = t.TicketNo,
-                                        EmptyWeight = t.EmptyWeight,
-                                        GrossWeight = t.GrossWeight,
-                                        NetWeight = t.NetWeight,
-                                        CreatedAt = t.CreatedAt
+                                        TicketNo = ticket.TicketNo,
+                                        BasketCount = ticket.BasketCount,
+                                        EmptyWeight = ticket.EmptyWeight,
+                                        GrossWeight = ticket.GrossWeight,
+                                        NetWeight = ticket.NetWeight,
+                                        CreatedAt = ticket.CreatedAt
                                     });
                                 }
+
+                                newSortingPermit.Items.Add(sortingItem);
                             }
+
+                            var firstItem = newSortingPermit.Items[0];
+                            var firstVariety = await _db.ProductVarieties
+                                .Include(v => v.Product)
+                                .FirstAsync(v => v.Id == firstItem.VarietyId);
+                            newSortingPermit.VarietyId = firstItem.VarietyId;
+                            newSortingPermit.ProductId = firstVariety.ProductId;
+                            newSortingPermit.ProductType = firstVariety.Product?.Name ?? permit.ProductType;
+
                             _db.SortingExitPermits.Add(newSortingPermit);
-                            await _db.SaveChangesAsync();
-                            TempData["Msg"] += " (در لیست سورتینگ ثبت شد)";
+                            transferredToSorting = true;
                         }
                     }
                 }
+
+                permit.Status = "تأیید شده در مقصد";
+                await _db.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                TempData["Msg"] = transferredToSorting
+                    ? "تأیید مقصد ثبت شد و همه ردیف‌های رقم و قبض‌های مرتبط به سورتینگ منتقل شدند."
+                    : "تأیید مقصد با موفقیت ثبت شد.";
             }
             return RedirectToAction(nameof(Index), new { cycleId = cycleId ?? permit.HarvestCycleId, focusId = permit.Id });
         }
