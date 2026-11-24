@@ -18,8 +18,10 @@ namespace FruitBilling.Web.Data
         public DbSet<Tree> Trees { get; set; }
         public DbSet<Road> Roads => Set<Road>();
         public DbSet<FruitExitPermit> FruitExitPermits => Set<FruitExitPermit>();
+        public DbSet<FruitExitPermitItem> FruitExitPermitItems => Set<FruitExitPermitItem>();
         public DbSet<BasculTicket> BasculTickets => Set<BasculTicket>();
         public DbSet<SortingExitPermit> SortingExitPermits => Set<SortingExitPermit>();
+        public DbSet<SortingExitPermitItem> SortingExitPermitItems => Set<SortingExitPermitItem>();
         public DbSet<SortingBasculTicket> SortingBasculTickets => Set<SortingBasculTicket>();
         public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
         public DbSet<RowCondition> RowConditions => Set<RowCondition>();
@@ -28,6 +30,7 @@ namespace FruitBilling.Web.Data
         public DbSet<Product> Products => Set<Product>();
         public DbSet<ProductVariety> ProductVarieties => Set<ProductVariety>();
         public DbSet<HarvestCycle> HarvestCycles => Set<HarvestCycle>();
+        public DbSet<HarvestCycleCategory> HarvestCycleCategories => Set<HarvestCycleCategory>();
         public DbSet<Category> Categories => Set<Category>();
         public DbSet<YieldEstimate> YieldEstimates => Set<YieldEstimate>();
         protected override void OnModelCreating(ModelBuilder mb)
@@ -100,6 +103,54 @@ namespace FruitBilling.Web.Data
                 .WithMany(p => p.Varieties)
                 .HasForeignKey(v => v.ProductId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            // گونه‌های متعدد برای هر دوره برداشت
+            mb.Entity<HarvestCycleCategory>()
+                .HasKey(x => new { x.HarvestCycleId, x.CategoryId });
+            mb.Entity<HarvestCycleCategory>()
+                .HasOne(x => x.HarvestCycle)
+                .WithMany(x => x.HarvestCycleCategories)
+                .HasForeignKey(x => x.HarvestCycleId)
+                .OnDelete(DeleteBehavior.Cascade);
+            mb.Entity<HarvestCycleCategory>()
+                .HasOne(x => x.Category)
+                .WithMany()
+                .HasForeignKey(x => x.CategoryId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // جزئیات چندرقمی برگ خروج مزرعه
+            mb.Entity<FruitExitPermitItem>()
+                .HasOne(x => x.FruitExitPermit)
+                .WithMany(x => x.Items)
+                .HasForeignKey(x => x.FruitExitPermitId)
+                .OnDelete(DeleteBehavior.Cascade);
+            mb.Entity<FruitExitPermitItem>()
+                .HasOne(x => x.Variety)
+                .WithMany()
+                .HasForeignKey(x => x.VarietyId)
+                .OnDelete(DeleteBehavior.Restrict);
+            mb.Entity<BasculTicket>()
+                .HasOne(x => x.FruitExitPermitItem)
+                .WithMany(x => x.BasculTickets)
+                .HasForeignKey(x => x.FruitExitPermitItemId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            // جزئیات چندرقمی/چنددرجه برگ خروج سورتینگ
+            mb.Entity<SortingExitPermitItem>()
+                .HasOne(x => x.SortingExitPermit)
+                .WithMany(x => x.Items)
+                .HasForeignKey(x => x.SortingExitPermitId)
+                .OnDelete(DeleteBehavior.Cascade);
+            mb.Entity<SortingExitPermitItem>()
+                .HasOne(x => x.Variety)
+                .WithMany()
+                .HasForeignKey(x => x.VarietyId)
+                .OnDelete(DeleteBehavior.Restrict);
+            mb.Entity<SortingBasculTicket>()
+                .HasOne(x => x.SortingExitPermitItem)
+                .WithMany(x => x.BasculTickets)
+                .HasForeignKey(x => x.SortingExitPermitItemId)
+                .OnDelete(DeleteBehavior.NoAction);
 
             // جلوگیری از حذف محصول/رقم/دوره‌ای که در برگه‌ها استفاده شده است (NoAction)
             mb.Entity<FruitExitPermit>()
