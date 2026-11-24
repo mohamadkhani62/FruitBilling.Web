@@ -38,7 +38,7 @@
     <a asp-action="Create" class="btn btn-primary mb-3">➕ تعریف دوره جدید</a>
     <table>
         <thead>
-            <tr><th>#</th><th>محصول</th><th>عنوان دوره</th><th>سال</th><th>شماره دوره</th><th>بازه زمانی</th><th>عملیات</th></tr>
+            <tr><th>#</th><th>گونه‌ها</th><th>عنوان دوره</th><th>سال</th><th>شماره دوره</th><th>بازه زمانی</th><th>عملیات</th></tr>
         </thead>
         <tbody>
             @{
@@ -48,7 +48,11 @@
             {
                 <tr>
                     <td>@i</td>
-                    <td>@(item.Category?.Name ?? "عمومی")</td>
+                    <td>
+                        @(item.HarvestCycleCategories.Any()
+                            ? string.Join("، ", item.HarvestCycleCategories.Select(x => x.Category.Name))
+                            : item.Category?.Name ?? "عمومی")
+                    </td>
                     <td><b>@item.Name</b></td>
                     <td>@item.Year</td>
                     <td>@item.CycleNumber</td>
