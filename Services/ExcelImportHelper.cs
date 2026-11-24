@@ -15,16 +15,49 @@ namespace FruitBilling.Web.Services
         public int HiddenErrorCount { get; set; }
         public List<string> Errors { get; } = new();
         public List<string> Notes { get; } = new();
-        public bool HasErrors => Errors.Count > 0;
+        public Dictionary<int, List<string>> RowErrors { get; } = new();
+        public Dictionary<int, List<string>> RowNotes { get; } = new();
+        public bool HasErrors => Errors.Count > 0 || HiddenErrorCount > 0;
+
+        private static IEnumerable<int> ExtractRowNumbers(string message)
+        {
+            var matches = System.Text.RegularExpressions.Regex.Matches(
+                message ?? "", @"ردیف(?:‌های|های)?\s*([0-9۰-۹]+(?:\s*[،,و]\s*[0-9۰-۹]+)*)");
+            foreach (System.Text.RegularExpressions.Match match in matches)
+            {
+                foreach (var token in System.Text.RegularExpressions.Regex.Split(match.Groups[1].Value, @"\s*[،,و]\s*"))
+                {
+                    var digits = ExcelImportHelper.ToLatinDigits(token.Trim());
+                    if (int.TryParse(digits, out var row) && row >= 2)
+                        yield return row;
+                }
+            }
+        }
 
         public void AddError(string message)
         {
+            foreach (var row in ExtractRowNumbers(message))
+            {
+                if (!RowErrors.TryGetValue(row, out var messages))
+                    RowErrors[row] = messages = new List<string>();
+                if (messages.Count < 20 && !messages.Contains(message))
+                    messages.Add(message);
+            }
+
             if (Errors.Count < 100) Errors.Add(message);
             else HiddenErrorCount++;
         }
 
         public void AddNote(string message)
         {
+            foreach (var row in ExtractRowNumbers(message))
+            {
+                if (!RowNotes.TryGetValue(row, out var messages))
+                    RowNotes[row] = messages = new List<string>();
+                if (messages.Count < 20 && !messages.Contains(message))
+                    messages.Add(message);
+            }
+
             if (Notes.Count < 50) Notes.Add(message);
         }
     }
@@ -192,6 +225,94 @@ namespace FruitBilling.Web.Services
                 candidate = name.Substring(0, Math.Min(name.Length, 31 - suffix.Length)) + suffix;
             }
             return candidate;
+        }
+
+        // ساخت نسخه علامت‌گذاری‌شده از همان فایل اصلی؛ هیچ تغییری در داده‌های ورودی انجام نمی‌شود.
+        public static byte[] BuildAnnotatedWorkbook(XLWorkbook workbook, IReadOnlyCollection<SheetImportReport> reports)
+        {
+            var reportSheet = workbook.Worksheets.FirstOrDefault(x =>
+                string.Equals(x.Name, "گزارش بررسی", StringComparison.OrdinalIgnoreCase));
+            if (reportSheet != null) reportSheet.Delete();
+
+            foreach (var report in reports)
+            {
+                var ws = workbook.Worksheets.FirstOrDefault(x =>
+                    string.Equals(x.Name, report.SheetName, StringComparison.OrdinalIgnoreCase));
+                if (ws == null) continue;
+
+                int lastColumn = Math.Max(ws.LastColumnUsed()?.ColumnNumber() ?? 0, 1);
+                int messageColumn = lastColumn + 1;
+                ws.Cell(1, messageColumn).Value = "گزارش بررسی";
+                ws.Cell(1, messageColumn).Style.Font.Bold = true;
+                ws.Cell(1, messageColumn).Style.Fill.BackgroundColor = XLColor.LightGray;
+                ws.Column(messageColumn).Width = 55;
+
+                foreach (var entry in report.RowErrors)
+                {
+                    if (entry.Key > (ws.LastRowUsed()?.RowNumber() ?? 0)) continue;
+                    var row = ws.Row(entry.Key);
+                    row.Style.Fill.BackgroundColor = XLColor.LightPink;
+                    row.Style.Font.FontColor = XLColor.DarkRed;
+                    ws.Cell(entry.Key, messageColumn).Value = string.Join(" | ", entry.Value);
+                    ws.Cell(entry.Key, messageColumn).Style.Alignment.WrapText = true;
+                }
+
+                foreach (var entry in report.RowNotes)
+                {
+                    if (report.RowErrors.ContainsKey(entry.Key) ||
+                        entry.Key > (ws.LastRowUsed()?.RowNumber() ?? 0)) continue;
+                    ws.Row(entry.Key).Style.Fill.BackgroundColor = XLColor.LightYellow;
+                    ws.Cell(entry.Key, messageColumn).Value = string.Join(" | ", entry.Value);
+                    ws.Cell(entry.Key, messageColumn).Style.Alignment.WrapText = true;
+                }
+
+                ws.SheetView.FreezeRows(1);
+            }
+
+            var summary = workbook.Worksheets.Add("گزارش بررسی");
+            summary.RightToLeft = true;
+            summary.Cell(1, 1).Value = "نام تب";
+            summary.Cell(1, 2).Value = "شماره ردیف";
+            summary.Cell(1, 3).Value = "نوع";
+            summary.Cell(1, 4).Value = "شرح";
+            summary.Range(1, 1, 1, 4).Style.Font.Bold = true;
+            summary.Range(1, 1, 1, 4).Style.Fill.BackgroundColor = XLColor.LightGray;
+
+            int targetRow = 2;
+            foreach (var report in reports)
+            {
+                foreach (var error in report.Errors)
+                {
+                    var rowNumber = ExtractRowNumbers(error).FirstOrDefault();
+                    summary.Cell(targetRow, 1).Value = report.SheetName;
+                    summary.Cell(targetRow, 2).Value = rowNumber == 0 ? "—" : rowNumber.ToString();
+                    summary.Cell(targetRow, 3).Value = "خطا";
+                    summary.Cell(targetRow, 4).Value = error;
+                    summary.Row(targetRow).Style.Fill.BackgroundColor = XLColor.LightPink;
+                    targetRow++;
+                }
+                foreach (var note in report.Notes)
+                {
+                    var rowNumber = ExtractRowNumbers(note).FirstOrDefault();
+                    summary.Cell(targetRow, 1).Value = report.SheetName;
+                    summary.Cell(targetRow, 2).Value = rowNumber == 0 ? "—" : rowNumber.ToString();
+                    summary.Cell(targetRow, 3).Value = "هشدار";
+                    summary.Cell(targetRow, 4).Value = note;
+                    summary.Row(targetRow).Style.Fill.BackgroundColor = XLColor.LightYellow;
+                    targetRow++;
+                }
+            }
+
+            summary.Column(1).Width = 28;
+            summary.Column(2).Width = 14;
+            summary.Column(3).Width = 14;
+            summary.Column(4).Width = 85;
+            summary.Column(4).Style.Alignment.WrapText = true;
+            summary.SheetView.FreezeRows(1);
+
+            using var stream = new MemoryStream();
+            workbook.SaveAs(stream);
+            return stream.ToArray();
         }
 
         // بررسی فایل آپلودی (فقط .xlsx، حداکثر ۲۰ مگابایت، امضای zip) و باز کردن آن
