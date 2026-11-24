@@ -116,30 +116,22 @@ namespace FruitBilling.Web.Controllers
 
             var perms = await _permissionService.GetEditableFieldsAsync(userId!, "ExitPermits", model);
 
-            // ثبت مزرعه و قطعه
-            if (!string.IsNullOrWhiteSpace(farmNameInput))
-            {
-                var farm = await _db.Farms.FirstOrDefaultAsync(f => f.Name == farmNameInput);
-                if (farm == null)
-                {
-                    farm = new Farm { Name = farmNameInput, CoordinatesJson = "[]", CreatedAt = DateTime.Now };
-                    _db.Farms.Add(farm);
-                    await _db.SaveChangesAsync();
-                }
-                model.FarmId = farm.Id;
-            }
+            // نام مزرعه و قطعه فقط بررسی می‌شود؛ ایجاد رکورد جدید تا پس از اعتبارسنجی کامل فرم به تعویق می‌افتد.
+            farmNameInput = farmNameInput?.Trim();
+            plotNameInput = plotNameInput?.Trim();
+            if (string.IsNullOrWhiteSpace(farmNameInput))
+                ModelState.AddModelError("farmNameInput", "انتخاب یا وارد کردن نام مزرعه الزامی است.");
+            if (string.IsNullOrWhiteSpace(plotNameInput))
+                ModelState.AddModelError("plotNameInput", "انتخاب یا وارد کردن نام قطعه الزامی است.");
 
-            if (!string.IsNullOrWhiteSpace(plotNameInput) && model.FarmId.HasValue)
-            {
-                var plot = await _db.Plots.FirstOrDefaultAsync(p => p.Name == plotNameInput && p.FarmId == model.FarmId.Value);
-                if (plot == null)
-                {
-                    plot = new Plot { Name = plotNameInput, FarmId = model.FarmId.Value, CoordinatesJson = "[]", CreatedAt = DateTime.Now };
-                    _db.Plots.Add(plot);
-                    await _db.SaveChangesAsync();
-                }
-                model.PlotId = plot.Id;
-            }
+            Farm? selectedFarm = null;
+            Plot? selectedPlot = null;
+            if (!string.IsNullOrWhiteSpace(farmNameInput))
+                selectedFarm = await _db.Farms.FirstOrDefaultAsync(f => f.Name == farmNameInput);
+
+            if (!string.IsNullOrWhiteSpace(plotNameInput) && selectedFarm != null)
+                selectedPlot = await _db.Plots.FirstOrDefaultAsync(p =>
+                    p.Name == plotNameInput && p.FarmId == selectedFarm.Id);
 
             // هر ردیف محصول/رقم در جزئیات جداگانه ذخیره می‌شود.
             model.Items ??= new List<FruitExitPermitItem>();
@@ -194,6 +186,31 @@ namespace FruitBilling.Web.Controllers
                 await LoadDropdownsForCycle(model.HarvestCycleId ?? 0);
                 return View(model);
             }
+
+            // پس از معتبر شدن تمام ورودی‌ها، مزرعه و قطعه لازم ایجاد/متصل می‌شوند.
+            selectedFarm ??= new Farm
+            {
+                Name = farmNameInput!,
+                CoordinatesJson = "[]",
+                CreatedAt = DateTime.Now
+            };
+            if (selectedFarm.Id == 0)
+                _db.Farms.Add(selectedFarm);
+
+            if (selectedPlot == null)
+            {
+                selectedPlot = new Plot
+                {
+                    Name = plotNameInput!,
+                    Farm = selectedFarm,
+                    CoordinatesJson = "[]",
+                    CreatedAt = DateTime.Now
+                };
+            }
+            model.Farm = selectedFarm;
+            model.Plot = selectedPlot;
+            if (selectedPlot.Id == 0)
+                _db.Plots.Add(selectedPlot);
 
             foreach (var item in model.Items)
             {
