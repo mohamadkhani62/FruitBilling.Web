@@ -2,6 +2,7 @@
 @{
     var reportController = ViewData["ReportController"] as string ?? "Home";
     var isPreview = ViewData["IsImportPreview"] is bool preview && preview;
+    var annotatedToken = ViewData["AnnotatedWorkbookToken"] as string;
 }
 <hr />
 @if (isPreview)
@@ -9,6 +10,14 @@
     <div class="alert alert-info border-primary" role="status">
         <b>🔎 پیش‌نمایش انجام شد؛ هیچ اطلاعاتی ذخیره نشده است.</b>
         تب‌های سبز قابل ثبت هستند؛ تب‌های قرمز خطا دارند و باید اصلاح شوند. هشدارها و توضیحات با رنگ زرد یا آبی نمایش داده می‌شوند.
+    </div>
+}
+@if (!string.IsNullOrWhiteSpace(annotatedToken))
+{
+    <div class="alert alert-secondary d-flex flex-wrap align-items-center justify-content-between gap-2" role="status">
+        <span>نسخه اکسل علامت‌گذاری‌شده آماده است: ردیف‌های خطادار قرمز، هشدارها زرد و شرح موارد در ستون «گزارش بررسی» و تب جداگانه درج شده‌اند.</span>
+        <a asp-controller="@reportController" asp-action="DownloadAnnotatedImport" asp-route-token="@annotatedToken"
+           class="btn btn-outline-primary">⬇️ دریافت فایل اکسل علامت‌گذاری‌شده</a>
     </div>
 }
 <h5>📑 گزارش ورود (به تفکیک تب)</h5>
