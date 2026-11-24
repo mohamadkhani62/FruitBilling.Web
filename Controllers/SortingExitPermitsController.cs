@@ -189,6 +189,17 @@ namespace FruitBilling.Web.Controllers
                 ModelState.AddModelError(nameof(model.MovementType), "برای «جابجایی» باید نوع خروج را انتخاب کنید (خروج برای سورت یا خروج برای ذخیره‌سازی).");
             }
 
+            var normalizedPermitNumber = perms.GetValueOrDefault("PermitNumber")
+                ? (model.PermitNumber ?? string.Empty).Trim()
+                : string.Empty;
+            if (!string.IsNullOrWhiteSpace(normalizedPermitNumber) &&
+                await _db.SortingExitPermits.AnyAsync(p =>
+                    p.HarvestCycleId == cycle.Id && p.PermitNumber == normalizedPermitNumber))
+            {
+                ModelState.AddModelError(nameof(model.PermitNumber),
+                    "این شماره مجوز تحویل قبلاً در همین دوره برداشت ثبت شده است.");
+            }
+
             if (!ModelState.IsValid)
             {
                 ViewBag.CurrentCycle = cycle;
@@ -202,7 +213,7 @@ namespace FruitBilling.Web.Controllers
                 CreatedAt = DateTime.Now,
                 Status = "در انتظار توزین",
                 HarvestCycleId = cycle.Id,
-                PermitNumber = perms.GetValueOrDefault("PermitNumber") ? model.PermitNumber : "",
+                PermitNumber = normalizedPermitNumber,
                 Date = perms.GetValueOrDefault("Date") ? model.Date : "",
                 BasketCount = perms.GetValueOrDefault("BasketCount") ? model.BasketCount : null,
                 ProductType = perms.GetValueOrDefault("ProductType") ? model.ProductType : null,
@@ -358,7 +369,8 @@ namespace FruitBilling.Web.Controllers
                 }
             }
 
-            if (perms.GetValueOrDefault("PermitNumber")) permit.PermitNumber = model.PermitNumber;
+            if (perms.GetValueOrDefault("PermitNumber"))
+                permit.PermitNumber = (model.PermitNumber ?? string.Empty).Trim();
             if (perms.GetValueOrDefault("Date")) permit.Date = model.Date;
             if (perms.GetValueOrDefault("FarmName")) permit.FarmName = model.FarmName;
             if (perms.GetValueOrDefault("VehiclePlate")) permit.VehiclePlate = model.VehiclePlate;
@@ -382,6 +394,17 @@ namespace FruitBilling.Web.Controllers
                 }
                 else ModelState.AddModelError(nameof(model.HarvestCycleId), "دوره برداشت انتخاب‌شده معتبر نیست.");
             }
+            if (permit.HarvestCycleId.HasValue && !string.IsNullOrWhiteSpace(permit.PermitNumber))
+            {
+                var duplicatePermitNumber = await _db.SortingExitPermits.AsNoTracking()
+                    .AnyAsync(p => p.Id != permit.Id
+                        && p.HarvestCycleId == permit.HarvestCycleId
+                        && p.PermitNumber == permit.PermitNumber);
+                if (duplicatePermitNumber)
+                    ModelState.AddModelError(nameof(model.PermitNumber),
+                        "این شماره مجوز تحویل قبلاً در دوره برداشت انتخاب‌شده ثبت شده است.");
+            }
+
             if (!ModelState.IsValid)
             {
                 await LoadCyclesAsync(permit.HarvestCycleId, includeNone: false);
@@ -763,7 +786,7 @@ namespace FruitBilling.Web.Controllers
             void WriteSheet(string title, List<SortingExitPermit> records)
             {
                 var ws = wb.AddWorksheet(SafeSheetName(title, usedNames));
-                string[] headers = { "ردیف", "شماره برگ خروج", "تاریخ", "مزرعه", "محصول", "رقم", "درجه", "تعداد سبد ردیف", "مقصد", "نوع فروش", "مبدا", "پیمانکار سورت", "پلاک", "شماره قبض", "تعداد سبد قبض", "وزن خالی (kg)", "وزن پر (kg)", "وزن خالص (kg)", "نوع خروج", "توضیحات" };
+                string[] headers = { "ردیف", "شماره مجوز تحویل", "تاریخ", "مزرعه", "محصول", "رقم", "درجه", "تعداد سبد ردیف", "مقصد", "نوع فروش", "مبدا", "پیمانکار سورت", "پلاک", "شماره قبض", "تعداد سبد قبض", "وزن خالی (kg)", "وزن پر (kg)", "وزن خالص (kg)", "نوع خروج", "توضیحات" };
                 for (int c = 0; c < headers.Length; c++) ws.Cell(1, c + 1).Value = headers[c];
                 int row = 2, sequence = 1;
                 void WriteRow(SortingExitPermit p, SortingExitPermitItem? item, SortingBasculTicket? ticket)
@@ -1080,7 +1103,7 @@ namespace FruitBilling.Web.Controllers
         // سربرگ‌های الزامی (ستون A تا P) به همین ترتیب
         private static readonly string[] ImportHeaders =
         {
-            "شماره برگ خروج", "تاریخ", "تعداد سبد", "نوع محصول", "درجه", "نام مزرعه",
+            "شماره مجوز تحویل", "تاریخ", "تعداد سبد", "نوع محصول", "درجه", "نام مزرعه",
             "شماره پلاک", "مقصد", "نوع فروش", "مبدا", "پیمانکار سورت", "توضیحات",
             "شماره قبض باسکول", "وزن خالی (kg)", "وزن پر (kg)",
             "نوع خروج"
