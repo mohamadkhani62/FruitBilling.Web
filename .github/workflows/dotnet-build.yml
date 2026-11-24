@@ -1,0 +1,28 @@
+name: .NET build
+
+on:
+  push:
+    branches:
+      - feature/multi-product-exit-permits
+  pull_request:
+    branches:
+      - master
+      - feature/multi-product-exit-permits
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore FruitBilling.Web.csproj
+
+      - name: Build
+        run: dotnet build FruitBilling.Web.csproj --configuration Release --no-restore
