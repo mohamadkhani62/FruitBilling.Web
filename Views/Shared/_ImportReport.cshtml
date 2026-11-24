@@ -57,7 +57,7 @@
                 <span>@rep.Permits برگه با @rep.Tickets قبض باسکول ثبت شد.</span>
             }
             @if (rep.Duplicates > 0) { <span>(@rep.Duplicates برگه‌ی تکراری نادیده گرفته شد)</span> }
-            @if (rep.CycleId.HasValue)
+            @if (rep.CycleId.HasValue && !isPreview)
             {
                 <a asp-controller="@reportController" asp-action="Index" asp-route-cycleId="@rep.CycleId" class="btn btn-sm btn-outline-success ms-2">مشاهده</a>
             }
