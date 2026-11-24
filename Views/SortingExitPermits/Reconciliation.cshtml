@@ -22,7 +22,13 @@
         <h2 class="mb-1">🔎 گزارش تطبیق خروج مزرعه و سورتینگ</h2>
         <div class="text-muted">دوره: @(Model.HarvestCycleName ?? "—")</div>
     </div>
-    <a asp-action="Index" class="btn btn-outline-secondary">بازگشت به فهرست سورتینگ</a>
+    <div class="d-flex flex-wrap gap-2">
+        <form method="get" asp-action="ExportReconciliation">
+            <input type="hidden" name="cycleId" value="@Model.HarvestCycleId" />
+            <button type="submit" class="btn btn-success">⬇ دریافت گزارش اکسل</button>
+        </form>
+        <a asp-action="Index" class="btn btn-outline-secondary">بازگشت به فهرست سورتینگ</a>
+    </div>
 </div>
 
 <div class="alert alert-info">
