@@ -1126,6 +1126,10 @@ namespace FruitBilling.Web.Controllers
                         if (categoryIds.Length == 0 && cycle.CategoryId.HasValue)
                             categoryIds = new[] { cycle.CategoryId.Value };
 
+                        var sheetPermits = new List<FruitExitPermit>();
+                        var sheetNotes = new List<string>();
+                        int sheetTicketCount = 0;
+
                         foreach (var (first, itemGroups) in merged)
                         {
                             string farmKey = Norm(first.FarmName);
@@ -1139,8 +1143,7 @@ namespace FruitBilling.Web.Controllers
                             {
                                 farm = new Farm { Name = first.FarmName, CoordinatesJson = "[]", CreatedAt = DateTime.Now };
                                 farmByKey[farmKey] = farm;
-                                _db.Farms.Add(farm);
-                                rep.AddNote($"مزرعه‌ی جدید «{farm.Name}» ساخته شد.");
+                                sheetNotes.Add($"مزرعه‌ی جدید «{farm.Name}» ساخته شد.");
                             }
 
                             Plot? plot = null;
@@ -1151,8 +1154,7 @@ namespace FruitBilling.Web.Controllers
                                 {
                                     plot = new Plot { Name = first.PlotName, Farm = farm, CoordinatesJson = "[]", CreatedAt = DateTime.Now };
                                     plotByKey[plotKey] = plot;
-                                    _db.Plots.Add(plot);
-                                    rep.AddNote($"قطعه‌ی جدید «{plot.Name}» برای مزرعه‌ی «{farm.Name}» ساخته شد.");
+                                    sheetNotes.Add($"قطعه‌ی جدید «{plot.Name}» برای مزرعه‌ی «{farm.Name}» ساخته شد.");
                                 }
                             }
 
@@ -1198,7 +1200,7 @@ namespace FruitBilling.Web.Controllers
                                     counts.Add(itemHead.BasketCount!.Value);
                                 else if (ticketRows.Any(t => !t.TicketBasketCount.HasValue || t.TicketBasketCount.Value <= 0))
                                 {
-                                    rep.AddError($"برگه «{first.PermitNumber}»، رقم «{itemHead.VarietyName}»: تعداد سبد هر قبض باید مشخص و مثبت باشد.");
+                                    rep.AddError($"برگه «{first.PermitNumber}»، ردیف‌های {string.Join("، ", ticketRows.Select(t => t.RowNumber))}، محصول «{itemHead.ProductName}»، رقم «{itemHead.VarietyName}»: تعداد سبد هر قبض باید مشخص و مثبت باشد.");
                                     continue;
                                 }
                                 else if (ticketRows.Count > 0)
@@ -1206,7 +1208,7 @@ namespace FruitBilling.Web.Controllers
 
                                 if (ticketRows.Count > 0 && counts.Sum() != itemHead.BasketCount!.Value)
                                 {
-                                    rep.AddError($"برگه «{first.PermitNumber}»، رقم «{itemHead.VarietyName}»: مجموع سبد قبض‌ها ({counts.Sum()}) با تعداد سبد ردیف ({itemHead.BasketCount}) برابر نیست.");
+                                    rep.AddError($"برگه «{first.PermitNumber}»، ردیف‌های {string.Join("، ", ticketRows.Select(t => t.RowNumber))}، محصول «{itemHead.ProductName}»، رقم «{itemHead.VarietyName}»: مجموع سبد قبض‌ها ({counts.Sum()}) با تعداد سبد ردیف ({itemHead.BasketCount}) برابر نیست.");
                                     continue;
                                 }
 
@@ -1240,13 +1242,26 @@ namespace FruitBilling.Web.Controllers
                             permit.BasketType = permit.Items[0].BasketType;
                             permit.BasketCount = permit.Items.Sum(x => x.BasketCount);
                             permit.Status = permit.Items.All(x => x.BasculTickets.Any()) ? "توزین شده" : "در انتظار توزین";
-                            toAdd.Add(permit);
-                            rep.Tickets += permit.Items.Sum(x => x.BasculTickets.Count);
-                            rep.Permits++;
+                            sheetPermits.Add(permit);
+                            sheetTicketCount += permit.Items.Sum(x => x.BasculTickets.Count);
                         }
+
+                        // هر تب یک واحد مستقل است؛ خطای یک تب نباید باعث ثبت ناقص آن شود یا تب‌های سالم دیگر را متوقف کند.
+                        if (rep.HasErrors)
+                        {
+                            rep.Permits = 0;
+                            rep.Tickets = 0;
+                            rep.AddNote("به‌دلیل وجود خطا در این تب، هیچ‌یک از برگه‌های آن ذخیره نشد.");
+                            continue;
+                        }
+
+                        toAdd.AddRange(sheetPermits);
+                        rep.Permits = sheetPermits.Count;
+                        rep.Tickets = sheetTicketCount;
+                        foreach (var note in sheetNotes) rep.AddNote(note);
                     }
 
-                    // یک SaveChanges = یا همه‌ی تب‌های معتبر ثبت می‌شوند یا هیچ‌کدام
+                    // یک SaveChanges = همه‌ی تب‌های معتبر ثبت می‌شوند؛ تب‌های دارای خطا کنار گذاشته می‌شوند.
                     if (!previewOnly && toAdd.Count > 0)
                     {
                         _db.FruitExitPermits.AddRange(toAdd);
