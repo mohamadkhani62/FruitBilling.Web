@@ -52,6 +52,8 @@ namespace FruitBilling.Web.Controllers
                 .Include(p => p.Farm)
                 .Include(p => p.Plot)
                 .Include(p => p.BasculTickets)
+                .Include(p => p.Items).ThenInclude(x => x.Variety).ThenInclude(v => v.Product)
+                .Include(p => p.Items).ThenInclude(x => x.BasculTickets)
                 .Include(p => p.Product)
                 .Include(p => p.Variety)
                 .Where(p => p.HarvestCycleId == cycleId);
@@ -203,6 +205,8 @@ namespace FruitBilling.Web.Controllers
                 .Include(p => p.Farm)
                 .Include(p => p.Plot)
                 .Include(p => p.BasculTickets)
+                .Include(p => p.Items).ThenInclude(x => x.Variety).ThenInclude(v => v.Product)
+                .Include(p => p.Items).ThenInclude(x => x.BasculTickets)
                 .FirstOrDefaultAsync(p => p.Id == id);
 
             if (permit == null) return NotFound();
