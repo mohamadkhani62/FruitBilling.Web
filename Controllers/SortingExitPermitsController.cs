@@ -919,10 +919,11 @@ namespace FruitBilling.Web.Controllers
                     ws.Column(i + 1).Width = 18;
                 }
 
-                // ستون‌های عددی عدد، بقیه متن (تا تاریخ شمسی و شماره‌ها تغییر نکنند)
+                // ستون‌های عددی؛ تاریخ و شماره‌ها به‌صورت متن حفظ می‌شوند.
                 for (int col = 1; col <= ImportHeaders.Length; col++)
                 {
-                    bool numeric = col == 3 || col == 14 || col == 15;
+                    bool numeric = col == 1 || col == 8 || col == 15 ||
+                        col == 16 || col == 17 || col == 18;
                     ws.Column(col).Style.NumberFormat.Format = numeric ? "0" : "@";
                 }
 
@@ -1010,7 +1011,10 @@ namespace FruitBilling.Web.Controllers
             {
                 using (wb)
                 {
-                    var cycles = await _db.HarvestCycles.AsNoTracking().ToListAsync();
+                    var cycles = await _db.HarvestCycles
+                        .Include(c => c.HarvestCycleCategories)
+                        .AsNoTracking()
+                        .ToListAsync();
                     var cycleLookup = cycles
                         .GroupBy(x => Norm(x.Name))
                         .ToDictionary(g => g.Key, g => g.ToList());
@@ -1021,7 +1025,6 @@ namespace FruitBilling.Web.Controllers
                         var rep = new SheetImportReport { SheetName = ws.Name };
                         reports.Add(rep);
 
-                        // ---------- تطبیق نام تب با نام دوره ----------
                         if (!cycleLookup.TryGetValue(Norm(ws.Name), out var matches))
                         {
                             rep.AddError("نام این تب با نام هیچ دوره‌ی برداشتی یکی نیست؛ این تب ثبت نشد.");
@@ -1032,6 +1035,7 @@ namespace FruitBilling.Web.Controllers
                             rep.AddError("چند دوره با این نام وجود دارد؛ نام دوره‌ها باید یکتا باشد.");
                             continue;
                         }
+
                         var cycle = matches[0];
                         rep.CycleId = cycle.Id;
                         rep.CycleName = cycle.Name;
@@ -1041,16 +1045,12 @@ namespace FruitBilling.Web.Controllers
                             continue;
                         }
 
-                        // ---------- خواندن و اعتبارسنجی ساختار و نوع مقادیر ----------
                         var rows = ParseSheet(ws, rep);
                         if (rep.HasErrors) continue;
 
                         var merged = MergeGroups(rows, rep);
                         if (rep.HasErrors) continue;
 
-                        // ---------- شماره مجوز تحویل در هر دوره یکتا است ----------
-                        // نام مزرعه بخشی از کلید یکتایی نیست؛ یک شماره نباید در همان دوره
-                        // برای دو مزرعه یا دو برگه متفاوت دوباره استفاده شود.
                         var seenPermitNumbers = (await _db.SortingExitPermits.AsNoTracking()
                                 .Where(p => p.HarvestCycleId == cycle.Id)
                                 .Select(p => p.PermitNumber)
@@ -1059,12 +1059,32 @@ namespace FruitBilling.Web.Controllers
                             .Where(number => !string.IsNullOrWhiteSpace(number))
                             .ToHashSet();
 
-                        foreach (var (first, ticketRows) in merged)
+                        var categoryIds = cycle.HarvestCycleCategories.Select(x => x.CategoryId).ToArray();
+                        if (categoryIds.Length == 0 && cycle.CategoryId.HasValue)
+                            categoryIds = new[] { cycle.CategoryId.Value };
+
+                        var allowedVarietiesQuery = _db.ProductVarieties
+                            .AsNoTracking()
+                            .Include(v => v.Product)
+                            .AsQueryable();
+
+                        if (categoryIds.Length > 0)
+                        {
+                            allowedVarietiesQuery = allowedVarietiesQuery.Where(v =>
+                                v.Product != null && v.Product.CategoryId.HasValue &&
+                                categoryIds.Contains(v.Product.CategoryId.Value));
+                        }
+
+                        var allowedVarieties = await allowedVarietiesQuery.ToListAsync();
+                        var sheetPermits = new List<SortingExitPermit>();
+                        int sheetTicketCount = 0;
+
+                        foreach (var (first, permitRows) in merged)
                         {
                             var normalizedNumber = Norm(first.PermitNumber);
                             if (string.IsNullOrWhiteSpace(normalizedNumber))
                             {
-                                rep.AddError("شماره مجوز تحویل الزامی است؛ این تب ثبت نشد.");
+                                rep.AddError("شماره مجوز تحویل الزامی است؛ این برگه ثبت نشد.");
                                 continue;
                             }
 
@@ -1074,13 +1094,11 @@ namespace FruitBilling.Web.Controllers
                                 continue;
                             }
 
+                            int errorsBeforePermit = rep.Errors.Count + rep.HiddenErrorCount;
                             var permit = new SortingExitPermit
                             {
                                 PermitNumber = first.PermitNumber,
                                 Date = first.Date,
-                                BasketCount = first.BasketCount,
-                                ProductType = first.ProductType,
-                                Grade = first.Grade,
                                 FarmName = first.FarmName,
                                 VehiclePlate = first.VehiclePlate,
                                 Destination = first.Destination,
@@ -1094,30 +1112,167 @@ namespace FruitBilling.Web.Controllers
                                 CreatedAt = DateTime.Now
                             };
 
-                            foreach (var t in ticketRows)
+                            // قالب ۱۶ ستونی قدیمی و خروجی‌های قدیمیِ بدون رقم:
+                            // برای این داده‌ها رقم حدس زده نمی‌شود و قبض‌ها در سطح قدیمی برگه می‌مانند.
+                            if (first.IsLegacyFormat)
                             {
-                                permit.BasculTickets.Add(new SortingBasculTicket
+                                permit.ProductType = first.ProductType;
+                                permit.Grade = first.Grade;
+                                permit.BasketCount = first.BasketCount;
+
+                                foreach (var ticketRow in permitRows.Where(x => !string.IsNullOrWhiteSpace(x.TicketNo)))
                                 {
-                                    TicketNo = t.TicketNo,
-                                    EmptyWeight = t.EmptyWeight,
-                                    GrossWeight = t.GrossWeight,
-                                    NetWeight = t.GrossWeight - t.EmptyWeight,
-                                    CreatedAt = DateTime.Now
-                                });
-                                rep.Tickets++;
+                                    if (ticketRow.TicketBasketCount.HasValue && ticketRow.TicketBasketCount.Value <= 0)
+                                    {
+                                        rep.AddError($"ردیف {ticketRow.RowNumber}: تعداد سبد قبض باید بیشتر از صفر باشد.");
+                                        continue;
+                                    }
+
+                                    permit.BasculTickets.Add(new SortingBasculTicket
+                                    {
+                                        SortingExitPermit = permit,
+                                        TicketNo = ticketRow.TicketNo,
+                                        BasketCount = ticketRow.TicketBasketCount,
+                                        EmptyWeight = ticketRow.EmptyWeight,
+                                        GrossWeight = ticketRow.GrossWeight,
+                                        NetWeight = ticketRow.GrossWeight - ticketRow.EmptyWeight,
+                                        CreatedAt = DateTime.Now
+                                    });
+                                }
+
+                                if (permit.BasculTickets.Any())
+                                    permit.Status = "توزین شده";
+                            }
+                            else
+                            {
+                                var itemGroups = permitRows.GroupBy(x =>
+                                    Norm(x.ProductType) + "|" + Norm(x.VarietyName) + "|" + Norm(x.Grade)).ToList();
+
+                                foreach (var itemGroup in itemGroups)
+                                {
+                                    var itemRows = itemGroup.ToList();
+                                    var firstItemRow = itemRows[0];
+
+                                    if (string.IsNullOrWhiteSpace(firstItemRow.ProductType) ||
+                                        string.IsNullOrWhiteSpace(firstItemRow.VarietyName) ||
+                                        string.IsNullOrWhiteSpace(firstItemRow.Grade))
+                                    {
+                                        rep.AddError($"برگه «{first.PermitNumber}»، ردیف {firstItemRow.RowNumber}: محصول، رقم و درجه برای هر ردیف الزامی است.");
+                                        continue;
+                                    }
+
+                                    var basketValues = itemRows.Where(x => x.BasketCount.HasValue)
+                                        .Select(x => x.BasketCount!.Value).Distinct().ToList();
+                                    if (basketValues.Count != 1 || basketValues[0] <= 0)
+                                    {
+                                        rep.AddError($"برگه «{first.PermitNumber}»، ردیف‌های {string.Join("، ", itemRows.Select(x => x.RowNumber))}: تعداد سبد ردیف باید یک مقدار یکسان و بیشتر از صفر باشد.");
+                                        continue;
+                                    }
+
+                                    var itemVarieties = allowedVarieties.Where(v =>
+                                        v.Product != null &&
+                                        Norm(v.Product.Name) == Norm(firstItemRow.ProductType) &&
+                                        Norm(v.Name) == Norm(firstItemRow.VarietyName)).ToList();
+
+                                    if (itemVarieties.Count != 1)
+                                    {
+                                        rep.AddError($"برگه «{first.PermitNumber}»، ردیف {firstItemRow.RowNumber}: ترکیب محصول «{firstItemRow.ProductType}» و رقم «{firstItemRow.VarietyName}» در گونه‌های این دوره پیدا نشد یا تکراری است.");
+                                        continue;
+                                    }
+
+                                    var ticketRows = itemRows.Where(x => !string.IsNullOrWhiteSpace(x.TicketNo)).ToList();
+                                    var ticketBasketCounts = new List<int>();
+                                    if (ticketRows.Count == 1 && !ticketRows[0].TicketBasketCount.HasValue)
+                                    {
+                                        ticketBasketCounts.Add(basketValues[0]);
+                                    }
+                                    else if (ticketRows.Any(x => !x.TicketBasketCount.HasValue || x.TicketBasketCount.Value <= 0))
+                                    {
+                                        rep.AddError($"برگه «{first.PermitNumber}»، ردیف‌های {string.Join("، ", ticketRows.Select(x => x.RowNumber))}: تعداد سبد هر قبض الزامی و باید بیشتر از صفر باشد.");
+                                        continue;
+                                    }
+                                    else if (ticketRows.Count > 0)
+                                    {
+                                        ticketBasketCounts.AddRange(ticketRows.Select(x => x.TicketBasketCount!.Value));
+                                    }
+
+                                    if (ticketRows.Count > 0 && ticketBasketCounts.Sum() != basketValues[0])
+                                    {
+                                        rep.AddError($"برگه «{first.PermitNumber}»، محصول «{firstItemRow.ProductType}» و رقم «{firstItemRow.VarietyName}»، درجه «{firstItemRow.Grade}»: مجموع سبد قبض‌ها ({ticketBasketCounts.Sum()}) باید دقیقاً برابر سبد ردیف ({basketValues[0]}) باشد.");
+                                        continue;
+                                    }
+
+                                    var variety = itemVarieties[0];
+                                    var detail = new SortingExitPermitItem
+                                    {
+                                        SortingExitPermit = permit,
+                                        VarietyId = variety.Id,
+                                        Variety = variety,
+                                        Grade = firstItemRow.Grade,
+                                        BasketCount = basketValues[0]
+                                    };
+
+                                    for (int ticketIndex = 0; ticketIndex < ticketRows.Count; ticketIndex++)
+                                    {
+                                        var ticketRow = ticketRows[ticketIndex];
+                                        detail.BasculTickets.Add(new SortingBasculTicket
+                                        {
+                                            SortingExitPermit = permit,
+                                            SortingExitPermitItem = detail,
+                                            TicketNo = ticketRow.TicketNo,
+                                            BasketCount = ticketBasketCounts[ticketIndex],
+                                            EmptyWeight = ticketRow.EmptyWeight,
+                                            GrossWeight = ticketRow.GrossWeight,
+                                            NetWeight = ticketRow.GrossWeight - ticketRow.EmptyWeight,
+                                            CreatedAt = DateTime.Now
+                                        });
+                                    }
+
+                                    permit.Items.Add(detail);
+                                }
+
+                                if (permit.Items.Count > 0)
+                                {
+                                    permit.BasketCount = permit.Items.Sum(x => x.BasketCount);
+                                    var primaryItem = permit.Items[0];
+                                    permit.VarietyId = primaryItem.VarietyId;
+                                    permit.Variety = primaryItem.Variety;
+                                    permit.ProductId = primaryItem.Variety.ProductId;
+                                    permit.Product = primaryItem.Variety.Product;
+                                    permit.ProductType = primaryItem.Variety.Product?.Name;
+                                    permit.Grade = primaryItem.Grade;
+
+                                    permit.Status = permit.Items.All(x => x.BasculTickets.Any())
+                                        ? "توزین شده"
+                                        : "در انتظار توزین";
+                                }
                             }
 
-                            // اگر قبض داشت، وضعیت را توزین‌شده کن
-                            if (permit.BasculTickets.Any())
-                                permit.Status = "توزین شده";
+                            if (rep.Errors.Count + rep.HiddenErrorCount != errorsBeforePermit)
+                                continue;
 
-                            toAdd.Add(permit);
-                            rep.Permits++;
+                            sheetTicketCount += first.IsLegacyFormat
+                                ? permit.BasculTickets.Count
+                                : permit.Items.Sum(x => x.BasculTickets.Count);
+                            sheetPermits.Add(permit);
                         }
+
+                        // تب به‌صورت یک واحد ثبت می‌شود؛ اگر یک برگه‌ی آن خطا داشته باشد،
+                        // هیچ‌یک از برگه‌های همان تب ذخیره نمی‌شوند.
+                        if (rep.HasErrors)
+                        {
+                            rep.Permits = 0;
+                            rep.Tickets = 0;
+                            rep.AddNote("به‌دلیل وجود خطا در این تب، هیچ‌یک از برگه‌های آن ذخیره نشد.");
+                            continue;
+                        }
+
+                        toAdd.AddRange(sheetPermits);
+                        rep.Permits = sheetPermits.Count;
+                        rep.Tickets = sheetTicketCount;
                     }
                 }
 
-                // یک SaveChanges = یا همه‌ی تب‌های معتبر ثبت می‌شوند یا هیچ‌کدام
                 if (toAdd.Count > 0)
                 {
                     _db.SortingExitPermits.AddRange(toAdd);
@@ -1147,8 +1302,22 @@ namespace FruitBilling.Web.Controllers
         // 🆕 متدهای کمکی ورود اکسل
         // ==========================================
 
-        // سربرگ‌های الزامی (ستون A تا P) به همین ترتیب
+        // قالب جدید همسان با خروجی اکسل؛ یک سطر برای هر قبض و یک ردیف رقم/درجه
         private static readonly string[] ImportHeaders =
+        {
+            "ردیف", "شماره مجوز تحویل", "تاریخ", "مزرعه", "محصول", "رقم", "درجه",
+            "تعداد سبد ردیف", "مقصد", "نوع فروش", "مبدا", "پیمانکار سورت", "پلاک",
+            "شماره قبض", "تعداد سبد قبض", "وزن خالی (kg)", "وزن پر (kg)", "وزن خالص (kg)",
+            "نوع خروج", "توضیحات"
+        };
+
+        // قالب ۱۶ ستونی قبلی فقط برای حفظ ورود داده‌های قدیمی پذیرفته می‌شود.
+        private static readonly string[] LegacyImportHeaders =
+        {
+            "شماره مجوز تحویل", "تاریخ", "تعداد سبد", "نوع محصول", "درجه", "نام مزرعه",
+            "شماره پلاک", "مقصد", "نوع فروش", "مبدا", "پیمانکار سورت", "توضیحات",
+            "شماره قبض باسکول", "وزن خالی (kg)", "وزن پر (kg)", "نوع خروج"
+        }; =
         {
             "شماره مجوز تحویل", "تاریخ", "تعداد سبد", "نوع محصول", "درجه", "نام مزرعه",
             "شماره پلاک", "مقصد", "نوع فروش", "مبدا", "پیمانکار سورت", "توضیحات",
@@ -1167,11 +1336,10 @@ namespace FruitBilling.Web.Controllers
             ViewBag.UnusableCycleNames = cycles.Where(x => !IsValidSheetName(x.Name)).Select(x => x.Name).ToList();
         }
 
-        // خواندن یک تب: بررسی سربرگ، تعداد ستون‌ها، نوع و طول مقادیر، و قبض‌ها
+        // خواندن قالب جدید ۲۰ ستونی یا قالب قدیمی ۱۶ ستونی
         private static List<ImportRow> ParseSheet(IXLWorksheet ws, SheetImportReport rep)
         {
             var rows = new List<ImportRow>();
-            int colCount = ImportHeaders.Length;
             int lastRow = ws.LastRowUsed()?.RowNumber() ?? 0;
             int lastCol = ws.LastColumnUsed()?.ColumnNumber() ?? 0;
 
@@ -1181,19 +1349,33 @@ namespace FruitBilling.Web.Controllers
                 return rows;
             }
 
-            // ---------- سربرگ ----------
-            if (lastCol > colCount)
-                rep.AddError($"ساختار فایل باید دقیقاً {colCount} ستون (A تا P) باشد؛ ستون اضافه پیدا شد.");
-
-            for (int i = 0; i < colCount; i++)
+            bool HeadersMatch(string[] expected)
             {
-                var actual = ws.Cell(1, i + 1).GetString();
-                // ستون P (نوع خروج) می‌تواند اصلاً در فایل نباشد (برای نقدی، میدان و هدیه خودکار پر می‌شود)
-                if (i >= 15 && string.IsNullOrWhiteSpace(actual)) continue;
-                if (Norm(actual) != Norm(ImportHeaders[i]))
-                    rep.AddError($"عنوان ستون {XLHelper.GetColumnLetterFromNumber(i + 1)} باید «{ImportHeaders[i]}» باشد (در فایل: «{actual}»).");
+                for (int i = 0; i < expected.Length; i++)
+                {
+                    var actual = ws.Cell(1, i + 1).GetString();
+                    if (expected == LegacyImportHeaders && i == 15 && string.IsNullOrWhiteSpace(actual))
+                        continue;
+                    if (Norm(actual) != Norm(expected[i]))
+                        return false;
+                }
+                return true;
             }
-            if (rep.HasErrors) return rows;
+
+            bool isNewFormat = HeadersMatch(ImportHeaders);
+            bool isLegacyFormat = !isNewFormat && HeadersMatch(LegacyImportHeaders);
+            if (!isNewFormat && !isLegacyFormat)
+            {
+                rep.AddError("سربرگ فایل با قالب جدید ۲۰ ستونی خروجی اکسل یا قالب قدیمی ۱۶ ستونی مطابقت ندارد.");
+                return rows;
+            }
+
+            int colCount = isNewFormat ? ImportHeaders.Length : LegacyImportHeaders.Length;
+            if (lastCol > colCount)
+            {
+                rep.AddError($"ساختار این تب باید دقیقاً {colCount} ستون داشته باشد؛ ستون اضافه پیدا شد.");
+                return rows;
+            }
 
             if (lastRow < 2)
             {
@@ -1206,16 +1388,15 @@ namespace FruitBilling.Web.Controllers
                 return rows;
             }
 
-            // ---------- ردیف‌ها ----------
             for (int r = 2; r <= lastRow; r++)
             {
                 var row = ws.Row(r);
-
                 bool allEmpty = true;
                 for (int col = 1; col <= colCount; col++)
                 {
                     var cell = row.Cell(col);
-                    if (cell.DataType != XLDataType.Blank && !(cell.DataType == XLDataType.Text && string.IsNullOrWhiteSpace(cell.GetString())))
+                    if (cell.DataType != XLDataType.Blank &&
+                        !(cell.DataType == XLDataType.Text && string.IsNullOrWhiteSpace(cell.GetString())))
                     {
                         allEmpty = false;
                         break;
@@ -1225,31 +1406,65 @@ namespace FruitBilling.Web.Controllers
 
                 int errorsBefore = rep.Errors.Count + rep.HiddenErrorCount;
                 var item = new ImportRow { RowNumber = r };
+                int? sequence = null;
+                int? basket;
+                int? ticketBasket = null;
+                int? emptyW;
+                int? grossW;
+                int? netW = null;
+                string permitNumber, date, farmName, productType, varietyName = "", grade,
+                    plate, destination, saleType, source, contractor, description,
+                    ticketNo, movementText;
 
-                // کلیدهای گروه‌بندی در همه‌ی ردیف‌ها الزامی‌اند
-                TryReadText(row.Cell(1), ImportHeaders[0], 15, r, rep, true, out var permitNumber);
-                TryReadDate(row.Cell(2), r, rep, out var date);
-                TryReadInt(row.Cell(3), ImportHeaders[2], r, rep, out var basket);
-                TryReadText(row.Cell(4), ImportHeaders[3], 50, r, rep, false, out var productType);
-                TryReadText(row.Cell(5), ImportHeaders[4], 50, r, rep, false, out var grade);
-                TryReadText(row.Cell(6), ImportHeaders[5], 100, r, rep, true, out var farmName);
-                TryReadText(row.Cell(7), ImportHeaders[6], 20, r, rep, false, out var plate);
-                TryReadText(row.Cell(8), ImportHeaders[7], 100, r, rep, false, out var destination);
-                TryReadText(row.Cell(9), ImportHeaders[8], 50, r, rep, false, out var saleType);
-                TryReadText(row.Cell(10), ImportHeaders[9], 100, r, rep, false, out var source);
-                TryReadText(row.Cell(11), ImportHeaders[10], 100, r, rep, false, out var contractor);
-                TryReadText(row.Cell(12), ImportHeaders[11], 500, r, rep, false, out var description);
-                TryReadText(row.Cell(13), ImportHeaders[12], 30, r, rep, false, out var ticketNo);
-                TryReadInt(row.Cell(14), ImportHeaders[13], r, rep, out var emptyW);
-                TryReadInt(row.Cell(15), ImportHeaders[14], r, rep, out var grossW);
-                TryReadText(row.Cell(16), ImportHeaders[15], 40, r, rep, false, out var movementText);
+                if (isNewFormat)
+                {
+                    TryReadInt(row.Cell(1), ImportHeaders[0], r, rep, out sequence);
+                    TryReadText(row.Cell(2), ImportHeaders[1], 15, r, rep, true, out permitNumber);
+                    TryReadDate(row.Cell(3), r, rep, out date);
+                    TryReadText(row.Cell(4), ImportHeaders[3], 100, r, rep, true, out farmName);
+                    TryReadText(row.Cell(5), ImportHeaders[4], 100, r, rep, false, out productType);
+                    TryReadText(row.Cell(6), ImportHeaders[5], 100, r, rep, false, out varietyName);
+                    TryReadText(row.Cell(7), ImportHeaders[6], 50, r, rep, false, out grade);
+                    TryReadInt(row.Cell(8), ImportHeaders[7], r, rep, out basket);
+                    TryReadText(row.Cell(9), ImportHeaders[8], 100, r, rep, false, out destination);
+                    TryReadText(row.Cell(10), ImportHeaders[9], 50, r, rep, false, out saleType);
+                    TryReadText(row.Cell(11), ImportHeaders[10], 100, r, rep, false, out source);
+                    TryReadText(row.Cell(12), ImportHeaders[11], 100, r, rep, false, out contractor);
+                    TryReadText(row.Cell(13), ImportHeaders[12], 20, r, rep, false, out plate);
+                    TryReadText(row.Cell(14), ImportHeaders[13], 30, r, rep, false, out ticketNo);
+                    TryReadInt(row.Cell(15), ImportHeaders[14], r, rep, out ticketBasket);
+                    TryReadInt(row.Cell(16), ImportHeaders[15], r, rep, out emptyW);
+                    TryReadInt(row.Cell(17), ImportHeaders[16], r, rep, out grossW);
+                    TryReadInt(row.Cell(18), ImportHeaders[17], r, rep, out netW);
+                    TryReadText(row.Cell(19), ImportHeaders[18], 40, r, rep, false, out movementText);
+                    TryReadText(row.Cell(20), ImportHeaders[19], 500, r, rep, false, out description);
+                }
+                else
+                {
+                    TryReadText(row.Cell(1), LegacyImportHeaders[0], 15, r, rep, true, out permitNumber);
+                    TryReadDate(row.Cell(2), r, rep, out date);
+                    TryReadInt(row.Cell(3), LegacyImportHeaders[2], r, rep, out basket);
+                    TryReadText(row.Cell(4), LegacyImportHeaders[3], 50, r, rep, false, out productType);
+                    TryReadText(row.Cell(5), LegacyImportHeaders[4], 50, r, rep, false, out grade);
+                    TryReadText(row.Cell(6), LegacyImportHeaders[5], 100, r, rep, true, out farmName);
+                    TryReadText(row.Cell(7), LegacyImportHeaders[6], 20, r, rep, false, out plate);
+                    TryReadText(row.Cell(8), LegacyImportHeaders[7], 100, r, rep, false, out destination);
+                    TryReadText(row.Cell(9), LegacyImportHeaders[8], 50, r, rep, false, out saleType);
+                    TryReadText(row.Cell(10), LegacyImportHeaders[9], 100, r, rep, false, out source);
+                    TryReadText(row.Cell(11), LegacyImportHeaders[10], 100, r, rep, false, out contractor);
+                    TryReadText(row.Cell(12), LegacyImportHeaders[11], 500, r, rep, false, out description);
+                    TryReadText(row.Cell(13), LegacyImportHeaders[12], 30, r, rep, false, out ticketNo);
+                    TryReadInt(row.Cell(14), LegacyImportHeaders[13], r, rep, out emptyW);
+                    TryReadInt(row.Cell(15), LegacyImportHeaders[14], r, rep, out grossW);
+                    TryReadText(row.Cell(16), LegacyImportHeaders[15], 40, r, rep, false, out movementText);
+                }
 
                 string? saleCanon = null;
                 if (saleType.Length > 0)
                 {
                     saleCanon = SortingMovement.CanonicalSaleType(saleType);
                     if (saleCanon == null)
-                        rep.AddError($"ردیف {r}، ستون «{ImportHeaders[8]}»: فقط یکی از «{string.Join("»، «", SortingMovement.SaleTypes)}» مجاز است (مقدار فایل: «{saleType}»).");
+                        rep.AddError($"ردیف {r}، ستون «نوع فروش»: فقط یکی از «{string.Join("»، «", SortingMovement.SaleTypes)}» مجاز است (مقدار فایل: «{saleType}»).");
                 }
 
                 string? movement = null;
@@ -1257,35 +1472,51 @@ namespace FruitBilling.Web.Controllers
                 {
                     movement = SortingMovement.CanonicalExitType(movementText);
                     if (movement == null)
-                        rep.AddError($"ردیف {r}، ستون «{ImportHeaders[15]}»: فقط یکی از «{string.Join("»، «", SortingMovement.AllExitTypes)}» مجاز است (مقدار فایل: «{movementText}»).");
+                        rep.AddError($"ردیف {r}، ستون «نوع خروج»: مقدار واردشده معتبر نیست.");
                     else if (saleCanon == null)
-                        rep.AddError($"ردیف {r}: برای ثبت «{ImportHeaders[15]}» ستون «{ImportHeaders[8]}» هم باید پر باشد.");
+                        rep.AddError($"ردیف {r}: برای ثبت نوع خروج، ستون «نوع فروش» هم باید پر باشد.");
                     else if (!SortingMovement.AllowedExitTypes(saleCanon).Contains(movement))
                         rep.AddError($"ردیف {r}: «{movement}» برای نوع فروش «{saleCanon}» مجاز نیست؛ گزینه‌ی مجاز: «{string.Join("»، «", SortingMovement.AllowedExitTypes(saleCanon))}».");
                 }
                 else if (saleCanon == SortingMovement.Transfer)
                 {
-                    rep.AddError($"ردیف {r}: برای «{SortingMovement.Transfer}» ستون «{ImportHeaders[15]}» الزامی است.");
+                    rep.AddError($"ردیف {r}: برای «{SortingMovement.Transfer}» ستون «نوع خروج» الزامی است.");
                 }
 
-                // اگر هر کدام از ستون‌های قبض پر باشد، هر سه الزامی‌اند
-                bool anyTicket = ticketNo.Length > 0 || emptyW.HasValue || grossW.HasValue;
+                bool anyTicket = ticketNo.Length > 0 || ticketBasket.HasValue ||
+                    emptyW.HasValue || grossW.HasValue || netW.HasValue;
                 if (anyTicket && rep.Errors.Count + rep.HiddenErrorCount == errorsBefore)
                 {
                     if (ticketNo.Length == 0 || !emptyW.HasValue || !grossW.HasValue)
-                        rep.AddError($"ردیف {r}: برای ثبت قبض باید «شماره قبض باسکول»، «وزن خالی» و «وزن پر» هر سه پر باشند.");
+                    {
+                        rep.AddError($"ردیف {r}: برای ثبت قبض باید شماره قبض، وزن خالی و وزن پر هر سه وارد شوند.");
+                    }
                     else if (grossW.Value <= emptyW.Value)
+                    {
                         rep.AddError($"ردیف {r}: وزن پر ({grossW.Value}) باید بزرگ‌تر از وزن خالی ({emptyW.Value}) باشد.");
+                    }
+                    else if (ticketBasket.HasValue && ticketBasket.Value <= 0)
+                    {
+                        rep.AddError($"ردیف {r}: تعداد سبد قبض باید بیشتر از صفر باشد.");
+                    }
+                    else if (netW.HasValue && netW.Value != grossW.Value - emptyW.Value)
+                    {
+                        rep.AddError($"ردیف {r}: وزن خالص باید برابر تفاضل وزن پر و وزن خالی باشد.");
+                    }
                 }
 
-                if (rep.Errors.Count + rep.HiddenErrorCount != errorsBefore) continue;
+                if (rep.Errors.Count + rep.HiddenErrorCount != errorsBefore)
+                    continue;
 
+                item.SequenceNumber = sequence;
+                item.IsLegacyFormat = isLegacyFormat || (isNewFormat && string.IsNullOrWhiteSpace(varietyName) && sequence.HasValue);
                 item.PermitNumber = permitNumber;
                 item.Date = date;
-                item.BasketCount = basket;
-                item.ProductType = productType;
-                item.Grade = grade;
                 item.FarmName = farmName;
+                item.ProductType = productType;
+                item.VarietyName = varietyName;
+                item.Grade = grade;
+                item.BasketCount = basket;
                 item.VehiclePlate = plate;
                 item.Destination = destination;
                 item.SaleType = saleCanon ?? saleType;
@@ -1294,8 +1525,10 @@ namespace FruitBilling.Web.Controllers
                 item.Description = description;
                 item.MovementType = movement ?? "";
                 item.TicketNo = ticketNo;
+                item.TicketBasketCount = ticketBasket;
                 item.EmptyWeight = emptyW ?? 0;
                 item.GrossWeight = grossW ?? 0;
+                item.NetWeight = netW;
                 rows.Add(item);
             }
 
@@ -1305,27 +1538,29 @@ namespace FruitBilling.Web.Controllers
             return rows;
         }
 
-        // ردیف‌های هم‌کلید (شماره برگه + مزرعه) = یک برگه با چند قبض.
-        // مقادیر خالی از ردیف‌های دیگر پر می‌شود؛ مقادیر ناهمسان خطا است.
-        private static List<(ImportRow Head, List<ImportRow> TicketRows)> MergeGroups(List<ImportRow> rows, SheetImportReport rep)
+        // هر شماره مجوز تحویل در یک دوره فقط یک برگه است؛ ردیف‌ها می‌توانند رقم/درجه‌های متفاوت داشته باشند.
+        private static List<(ImportRow Head, List<ImportRow> Rows)> MergeGroups(List<ImportRow> rows, SheetImportReport rep)
         {
             var result = new List<(ImportRow, List<ImportRow>)>();
 
-            foreach (var g in rows.GroupBy(x => Norm(x.PermitNumber) + "|" + Norm(x.FarmName)))
+            foreach (var group in rows.GroupBy(x => Norm(x.PermitNumber)))
             {
-                var list = g.ToList();
+                var list = group.ToList();
                 var head = new ImportRow
                 {
                     RowNumber = list[0].RowNumber,
                     PermitNumber = list[0].PermitNumber,
-                    FarmName = list[0].FarmName
+                    IsLegacyFormat = list[0].IsLegacyFormat
                 };
-                string label = $"برگه «{head.PermitNumber}» (مزرعه «{head.FarmName}»)";
+                string label = $"برگه «{head.PermitNumber}»";
+
+                if (list.Any(x => x.IsLegacyFormat != head.IsLegacyFormat))
+                    rep.AddError($"{label}: قالب داده‌های این شماره مجوز با هم مخلوط شده است.");
 
                 void MergeText(string title, Func<ImportRow, string> get, Action<ImportRow, string> set, bool required)
                 {
                     var distinct = list.Where(x => !string.IsNullOrWhiteSpace(get(x)))
-                                       .GroupBy(x => Norm(get(x))).ToList();
+                        .GroupBy(x => Norm(get(x))).ToList();
                     if (distinct.Count > 1)
                         rep.AddError($"{label}: مقدار ستون «{title}» در ردیف‌های {string.Join("، ", distinct.Select(d => d.First().RowNumber))} با هم تفاوت دارد.");
                     else if (distinct.Count == 1)
@@ -1334,24 +1569,30 @@ namespace FruitBilling.Web.Controllers
                         rep.AddError($"{label}: ستون «{title}» الزامی است.");
                 }
 
-                MergeText(ImportHeaders[1], x => x.Date, (h, v) => h.Date = v, true);
-                MergeText(ImportHeaders[3], x => x.ProductType, (h, v) => h.ProductType = v, true);
-                MergeText(ImportHeaders[4], x => x.Grade, (h, v) => h.Grade = v, true);
-                MergeText(ImportHeaders[6], x => x.VehiclePlate, (h, v) => h.VehiclePlate = v, false);
-                MergeText(ImportHeaders[7], x => x.Destination, (h, v) => h.Destination = v, false);
-                MergeText(ImportHeaders[8], x => x.SaleType, (h, v) => h.SaleType = v, false);
-                MergeText(ImportHeaders[9], x => x.Source, (h, v) => h.Source = v, false);
-                MergeText(ImportHeaders[10], x => x.SortingContractor, (h, v) => h.SortingContractor = v, false);
-                MergeText(ImportHeaders[11], x => x.Description, (h, v) => h.Description = v, false);
-                MergeText(ImportHeaders[15], x => x.MovementType, (h, v) => h.MovementType = v, false);
+                MergeText("تاریخ", x => x.Date, (h, v) => h.Date = v, true);
+                MergeText("نام مزرعه", x => x.FarmName, (h, v) => h.FarmName = v, true);
+                MergeText("شماره پلاک", x => x.VehiclePlate, (h, v) => h.VehiclePlate = v, false);
+                MergeText("مقصد", x => x.Destination, (h, v) => h.Destination = v, false);
+                MergeText("نوع فروش", x => x.SaleType, (h, v) => h.SaleType = v, false);
+                MergeText("مبدا", x => x.Source, (h, v) => h.Source = v, false);
+                MergeText("پیمانکار سورت", x => x.SortingContractor, (h, v) => h.SortingContractor = v, false);
+                MergeText("توضیحات", x => x.Description, (h, v) => h.Description = v, false);
+                MergeText("نوع خروج", x => x.MovementType, (h, v) => h.MovementType = v, false);
 
-                var baskets = list.Where(x => x.BasketCount.HasValue).GroupBy(x => x.BasketCount!.Value).ToList();
-                if (baskets.Count > 1)
-                    rep.AddError($"{label}: مقدار ستون «{ImportHeaders[2]}» در ردیف‌های {string.Join("، ", baskets.Select(b => b.First().RowNumber))} با هم تفاوت دارد.");
-                else if (baskets.Count == 1)
-                    head.BasketCount = baskets[0].Key;
+                if (head.IsLegacyFormat)
+                {
+                    MergeText("محصول", x => x.ProductType, (h, v) => h.ProductType = v, true);
+                    MergeText("درجه", x => x.Grade, (h, v) => h.Grade = v, true);
 
-                result.Add((head, list.Where(x => x.TicketNo.Length > 0).ToList()));
+                    var baskets = list.Where(x => x.BasketCount.HasValue)
+                        .Select(x => x.BasketCount!.Value).Distinct().ToList();
+                    if (baskets.Count > 1)
+                        rep.AddError($"{label}: تعداد سبد در ردیف‌های یک برگه‌ی قدیمی یکسان نیست.");
+                    else if (baskets.Count == 1)
+                        head.BasketCount = baskets[0];
+                }
+
+                result.Add((head, list));
             }
 
             return result;
@@ -1462,10 +1703,13 @@ namespace FruitBilling.Web.Controllers
         public class ImportRow
         {
             public int RowNumber { get; set; }
+            public int? SequenceNumber { get; set; }
+            public bool IsLegacyFormat { get; set; }
             public string PermitNumber { get; set; } = "";
             public string Date { get; set; } = "";
             public int? BasketCount { get; set; }
             public string ProductType { get; set; } = "";
+            public string VarietyName { get; set; } = "";
             public string Grade { get; set; } = "";
             public string FarmName { get; set; } = "";
             public string VehiclePlate { get; set; } = "";
@@ -1475,8 +1719,10 @@ namespace FruitBilling.Web.Controllers
             public string SortingContractor { get; set; } = "";
             public string Description { get; set; } = "";
             public string TicketNo { get; set; } = "";
+            public int? TicketBasketCount { get; set; }
             public int EmptyWeight { get; set; }
             public int GrossWeight { get; set; }
+            public int? NetWeight { get; set; }
             public string MovementType { get; set; } = "";
         }
     }
