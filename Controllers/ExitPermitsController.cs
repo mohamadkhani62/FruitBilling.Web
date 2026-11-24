@@ -309,6 +309,8 @@ namespace FruitBilling.Web.Controllers
         {
             var permit = await _db.FruitExitPermits
                 .Include(p => p.Farm).Include(p => p.Plot)
+                .Include(p => p.Items).ThenInclude(x => x.Variety).ThenInclude(v => v.Product)
+                .Include(p => p.Items).ThenInclude(x => x.BasculTickets)
                 .FirstOrDefaultAsync(p => p.Id == id);
 
             if (permit == null) return NotFound();
@@ -325,14 +327,16 @@ namespace FruitBilling.Web.Controllers
         }
 
         [HttpPost, ValidateAntiForgeryToken]
-        public async Task<IActionResult> Weigh(int id, FruitExitPermit model, List<BasculTicket> tickets, int? cycleId)
+        public async Task<IActionResult> Weigh(int id, FruitExitPermit model, int? cycleId)
         {
             var permit = await _db.FruitExitPermits
                 .Include(p => p.Farm).Include(p => p.Plot)
+                .Include(p => p.Items).ThenInclude(x => x.Variety).ThenInclude(v => v.Product)
+                .Include(p => p.Items).ThenInclude(x => x.BasculTickets)
                 .FirstOrDefaultAsync(p => p.Id == id);
 
             if (permit == null) return NotFound();
-            if (tickets == null) tickets = new List<BasculTicket>();
+            model.Items ??= new List<FruitExitPermitItem>();
 
             var userId = _userManager.GetUserId(User);
             if (string.IsNullOrEmpty(userId) || !await CanManageBasculTicketsAsync(userId!, permit))
@@ -342,14 +346,38 @@ namespace FruitBilling.Web.Controllers
             }
 
             int totalNetWeight = 0;
-            foreach (var t in tickets)
+            foreach (var item in permit.Items)
             {
-                if (t.GrossWeight > 0)
+                var submittedItem = model.Items.FirstOrDefault(x => x.Id == item.Id);
+                var tickets = submittedItem?.BasculTickets ?? new List<BasculTicket>();
+                tickets = tickets.Where(t => !string.IsNullOrWhiteSpace(t.TicketNo) || t.GrossWeight > 0).ToList();
+
+                if (tickets.Count == 0)
                 {
-                    t.FruitExitPermitId = permit.Id;
-                    t.NetWeight = t.GrossWeight - t.EmptyWeight;
-                    totalNetWeight += t.NetWeight;
-                    _db.BasculTickets.Add(t);
+                    TempData["Warning"] = $"برای رقم {item.Variety?.Name} حداقل یک قبض باسکول ثبت کنید.";
+                    return RedirectToAction(nameof(Weigh), new { id, cycleId });
+                }
+
+                if (tickets.Count == 1)
+                    tickets[0].BasketCount = item.BasketCount;
+
+                if (tickets.Any(t => t.GrossWeight <= t.EmptyWeight || t.EmptyWeight < 0 || t.BasketCount <= 0) ||
+                    tickets.Sum(t => t.BasketCount ?? 0) != item.BasketCount)
+                {
+                    TempData["Warning"] = $"مجموع تعداد سبد قبض‌های رقم {item.Variety?.Name} باید دقیقاً برابر {item.BasketCount} باشد و وزن‌ها معتبر باشند.";
+                    return RedirectToAction(nameof(Weigh), new { id, cycleId });
+                }
+
+                _db.BasculTickets.RemoveRange(item.BasculTickets);
+                foreach (var ticket in tickets)
+                {
+                    ticket.Id = 0;
+                    ticket.FruitExitPermitId = permit.Id;
+                    ticket.FruitExitPermitItemId = item.Id;
+                    ticket.BasketCount = ticket.BasketCount;
+                    ticket.NetWeight = ticket.GrossWeight - ticket.EmptyWeight;
+                    totalNetWeight += ticket.NetWeight;
+                    _db.BasculTickets.Add(ticket);
                 }
             }
 
