@@ -88,8 +88,8 @@ namespace FruitBilling.Web.Services
                 "SortingExitPermits" => new[] {
                     "PermitNumber", "Date", "BasketCount", "ProductType", "Grade", "FarmName",
                     "VehiclePlate", "Destination", "SaleType", "Source", "SortingContractor", "MovementType", "Description",
-                    "TicketNo_Sort", "EmptyWeight_Sort", "GrossWeight_Sort", "NetWeight_Sort",
-                    "Action_Approve" // 🆕
+                    "TicketNo_Sort", "BasketCount_Sort", "EmptyWeight_Sort", "GrossWeight_Sort",
+                    "Action_Approve" // وزن خالص فقط محاسبه می‌شود
                 },
                 _ => Array.Empty<string>()
             };
