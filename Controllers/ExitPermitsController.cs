@@ -970,7 +970,7 @@ namespace FruitBilling.Web.Controllers
             {
                 using (wb)
                 {
-                    var cycles = await _db.HarvestCycles.AsNoTracking().ToListAsync();
+                    var cycles = await _db.HarvestCycles.AsNoTracking().Include(x => x.HarvestCycleCategories).ToListAsync();
                     var cycleLookup = cycles
                         .GroupBy(x => Norm(x.Name))
                         .ToDictionary(g => g.Key, g => g.ToList());
@@ -1134,7 +1134,6 @@ namespace FruitBilling.Web.Controllers
                                         EmptyWeight = t.EmptyWeight, GrossWeight = t.GrossWeight,
                                         NetWeight = t.GrossWeight - t.EmptyWeight, CreatedAt = DateTime.Now
                                     });
-                                    rep.Tickets++;
                                 }
                                 permit.Items.Add(detail);
                             }
@@ -1156,6 +1155,7 @@ namespace FruitBilling.Web.Controllers
                             permit.BasketCount = permit.Items.Sum(x => x.BasketCount);
                             permit.Status = permit.Items.All(x => x.BasculTickets.Any()) ? "توزین شده" : "در انتظار توزین";
                             toAdd.Add(permit);
+                            rep.Tickets += permit.Items.Sum(x => x.BasculTickets.Count);
                             rep.Permits++;
                         }
 
@@ -1373,7 +1373,7 @@ namespace FruitBilling.Web.Controllers
                     }
 
                     var tickets = itemRows.Where(x=>!string.IsNullOrWhiteSpace(x.TicketNo)).ToList();
-                    if (tickets.Count == 1 && !tickets[0].TicketBasketCount.HasValue)
+                    if (tickets.Count == 1 && itemRows.All(x => x.IsLegacyFormat) && !tickets[0].TicketBasketCount.HasValue)
                     {
                         // فایل ۱۷ ستونی قدیمی: یک قبض، تمام سبدهای ردیف را پوشش می‌دهد.
                     }
