@@ -1158,6 +1158,7 @@ namespace FruitBilling.Web.Controllers
                             rep.Tickets += permit.Items.Sum(x => x.BasculTickets.Count);
                             rep.Permits++;
                         }
+                    }
 
                     // یک SaveChanges = یا همه‌ی تب‌های معتبر ثبت می‌شوند یا هیچ‌کدام
                     if (toAdd.Count > 0)
