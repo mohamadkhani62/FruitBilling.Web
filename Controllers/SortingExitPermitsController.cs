@@ -192,12 +192,15 @@ namespace FruitBilling.Web.Controllers
             var normalizedPermitNumber = perms.GetValueOrDefault("PermitNumber")
                 ? (model.PermitNumber ?? string.Empty).Trim()
                 : string.Empty;
-            if (!string.IsNullOrWhiteSpace(normalizedPermitNumber) &&
-                await _db.SortingExitPermits.AnyAsync(p =>
-                    p.HarvestCycleId == cycle.Id && p.PermitNumber == normalizedPermitNumber))
+            if (!string.IsNullOrWhiteSpace(normalizedPermitNumber))
             {
-                ModelState.AddModelError(nameof(model.PermitNumber),
-                    "این شماره مجوز تحویل قبلاً در همین دوره برداشت ثبت شده است.");
+                var existingPermitNumbers = await _db.SortingExitPermits.AsNoTracking()
+                    .Where(p => p.HarvestCycleId == cycle.Id)
+                    .Select(p => p.PermitNumber)
+                    .ToListAsync();
+                if (existingPermitNumbers.Any(number => Norm(number) == Norm(normalizedPermitNumber)))
+                    ModelState.AddModelError(nameof(model.PermitNumber),
+                        "این شماره مجوز تحویل قبلاً در همین دوره برداشت ثبت شده است.");
             }
 
             if (!ModelState.IsValid)
@@ -396,11 +399,11 @@ namespace FruitBilling.Web.Controllers
             }
             if (permit.HarvestCycleId.HasValue && !string.IsNullOrWhiteSpace(permit.PermitNumber))
             {
-                var duplicatePermitNumber = await _db.SortingExitPermits.AsNoTracking()
-                    .AnyAsync(p => p.Id != permit.Id
-                        && p.HarvestCycleId == permit.HarvestCycleId
-                        && p.PermitNumber == permit.PermitNumber);
-                if (duplicatePermitNumber)
+                var existingPermitNumbers = await _db.SortingExitPermits.AsNoTracking()
+                    .Where(p => p.Id != permit.Id && p.HarvestCycleId == permit.HarvestCycleId)
+                    .Select(p => p.PermitNumber)
+                    .ToListAsync();
+                if (existingPermitNumbers.Any(number => Norm(number) == Norm(permit.PermitNumber)))
                     ModelState.AddModelError(nameof(model.PermitNumber),
                         "این شماره مجوز تحویل قبلاً در دوره برداشت انتخاب‌شده ثبت شده است.");
             }
