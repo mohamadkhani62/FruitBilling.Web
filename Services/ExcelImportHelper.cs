@@ -243,20 +243,42 @@ namespace FruitBilling.Web.Services
                 ws.Cell(1, messageColumn).Style.Fill.BackgroundColor = XLColor.LightGray;
                 ws.Column(messageColumn).Width = 55;
 
+                int lastRow = ws.LastRowUsed()?.RowNumber() ?? 0;
+                for (int rowNumber = 2; rowNumber <= lastRow; rowNumber++)
+                {
+                    if (ws.Row(rowNumber).CellsUsed().Any() &&
+                        !report.RowErrors.ContainsKey(rowNumber) &&
+                        !report.RowNotes.ContainsKey(rowNumber))
+                        ws.Row(rowNumber).Style.Fill.BackgroundColor = XLColor.LightGreen;
+                }
+
                 foreach (var entry in report.RowErrors)
                 {
-                    if (entry.Key > (ws.LastRowUsed()?.RowNumber() ?? 0)) continue;
+                    if (entry.Key > lastRow) continue;
                     var row = ws.Row(entry.Key);
                     row.Style.Fill.BackgroundColor = XLColor.LightPink;
                     row.Style.Font.FontColor = XLColor.DarkRed;
+
+                    foreach (var message in entry.Value)
+                    {
+                        var columnMatch = System.Text.RegularExpressions.Regex.Match(message, @"ستون\s*«([^»]+)»");
+                        if (!columnMatch.Success) continue;
+                        var header = Norm(columnMatch.Groups[1].Value);
+                        for (int column = 1; column <= lastColumn; column++)
+                        {
+                            if (Norm(ws.Cell(1, column).GetString()) != header) continue;
+                            ws.Cell(entry.Key, column).Style.Fill.BackgroundColor = XLColor.Red;
+                            ws.Cell(entry.Key, column).Style.Font.FontColor = XLColor.White;
+                        }
+                    }
+
                     ws.Cell(entry.Key, messageColumn).Value = string.Join(" | ", entry.Value);
                     ws.Cell(entry.Key, messageColumn).Style.Alignment.WrapText = true;
                 }
 
                 foreach (var entry in report.RowNotes)
                 {
-                    if (report.RowErrors.ContainsKey(entry.Key) ||
-                        entry.Key > (ws.LastRowUsed()?.RowNumber() ?? 0)) continue;
+                    if (report.RowErrors.ContainsKey(entry.Key) || entry.Key > lastRow) continue;
                     ws.Row(entry.Key).Style.Fill.BackgroundColor = XLColor.LightYellow;
                     ws.Cell(entry.Key, messageColumn).Value = string.Join(" | ", entry.Value);
                     ws.Cell(entry.Key, messageColumn).Style.Alignment.WrapText = true;
