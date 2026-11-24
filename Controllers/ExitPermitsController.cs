@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace FruitBilling.Web.Controllers
 {
@@ -15,12 +16,14 @@ namespace FruitBilling.Web.Controllers
         private readonly AppDbContext _db;
         private readonly IPermissionService _permissionService;
         private readonly UserManager<IdentityUser> _userManager;
+        private readonly IMemoryCache _memoryCache;
 
-        public ExitPermitsController(AppDbContext db, IPermissionService permissionService, UserManager<IdentityUser> userManager)
+        public ExitPermitsController(AppDbContext db, IPermissionService permissionService, UserManager<IdentityUser> userManager, IMemoryCache memoryCache)
         {
             _db = db;
             _permissionService = permissionService;
             _userManager = userManager;
+            _memoryCache = memoryCache;
         }
 
         // ==========================================
