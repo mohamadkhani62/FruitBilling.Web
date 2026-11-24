@@ -143,7 +143,39 @@
             </div>
         </div>
 
-        <div class="section-title">🚛 حمل و مقصد</div>
+        <div class="section-title">🍊 ردیف‌های رقم و درجه‌بندی</div>
+        <div class="table-responsive">
+            <table class="table table-bordered align-middle text-center">
+                <thead class="table-light"><tr><th>رقم</th><th>درجه</th><th>تعداد سبد</th><th>قبض‌های ثبت‌شده</th></tr></thead>
+                <tbody>
+                @for (var i = 0; i < (Model.Items?.Count ?? 0); i++)
+                {
+                    <tr>
+                        <td>
+                            <input type="hidden" asp-for="Items[i].Id" />
+                            <select asp-for="Items[i].VarietyId" asp-items="ViewBag.VarietyList" class="form-select" disabled="@(!perms.GetValueOrDefault("ProductType") || lockAll)">
+                                <option value="">-- انتخاب محصول - رقم --</option>
+                            </select>
+                            @if (!perms.GetValueOrDefault("ProductType") || lockAll) { <input type="hidden" asp-for="Items[i].VarietyId" /> }
+                        </td>
+                        <td>
+                            <select asp-for="Items[i].Grade" class="form-select" disabled="@(!perms.GetValueOrDefault("Grade") || lockAll)">
+                                <option value="">-- انتخاب درجه --</option>
+                                <option value="درجه یک">درجه یک</option><option value="درجه دو">درجه دو</option>
+                                <option value="درهم">درهم</option><option value="ضایعات">ضایعات</option>
+                            </select>
+                            @if (!perms.GetValueOrDefault("Grade") || lockAll) { <input type="hidden" asp-for="Items[i].Grade" /> }
+                        </td>
+                        <td><input asp-for="Items[i].BasketCount" type="number" min="1" class="form-control" readonly="@(!perms.GetValueOrDefault("BasketCount") || lockAll)" /></td>
+                        <td><span class="badge bg-secondary">@(Model.Items[i].BasculTickets?.Count ?? 0) قبض</span></td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+        <small class="text-muted">حذف ردیفی که قبض باسکول دارد در سرور مسدود است تا سوابق وزن از بین نرود.</small>
+
+                <div class="section-title">🚛 حمل و مقصد</div>
         <div class="row">
             <div class="col-md-3 mb-3">
                 <label asp-for="Destination" class="form-label"></label>
