@@ -1315,7 +1315,7 @@ namespace FruitBilling.Web.Controllers
                             var normalizedNumber = Norm(first.PermitNumber);
                             if (string.IsNullOrWhiteSpace(normalizedNumber))
                             {
-                                rep.AddError("شماره مجوز تحویل الزامی است؛ این برگه ثبت نشد.");
+                                rep.AddError($"ردیف‌های {string.Join("، ", permitRows.Select(x => x.RowNumber))}: شماره مجوز تحویل الزامی است؛ این برگه ثبت نشد.");
                                 continue;
                             }
 
@@ -1433,7 +1433,7 @@ namespace FruitBilling.Web.Controllers
 
                                     if (ticketRows.Count > 0 && ticketBasketCounts.Sum() != basketValues[0])
                                     {
-                                        rep.AddError($"برگه «{first.PermitNumber}»، محصول «{firstItemRow.ProductType}» و رقم «{firstItemRow.VarietyName}»، درجه «{firstItemRow.Grade}»: مجموع سبد قبض‌ها ({ticketBasketCounts.Sum()}) باید دقیقاً برابر سبد ردیف ({basketValues[0]}) باشد.");
+                                        rep.AddError($"برگه «{first.PermitNumber}»، ردیف‌های {string.Join("، ", ticketRows.Select(x => x.RowNumber))}، محصول «{firstItemRow.ProductType}»، رقم «{firstItemRow.VarietyName}»، درجه «{firstItemRow.Grade}»: مجموع سبد قبض‌ها ({ticketBasketCounts.Sum()}) باید دقیقاً برابر سبد ردیف ({basketValues[0]}) باشد.");
                                         continue;
                                     }
 
