@@ -256,6 +256,7 @@ namespace FruitBilling.Web.Controllers
             // 🆕 فقط مدیر می‌تواند دوره برگه را تغییر دهد (مثلاً انتقال برگه‌های قدیمی به یک دوره)
             if (User.IsInRole("Manager"))
                 await LoadCyclesAsync(permit.HarvestCycleId, includeNone: false);
+            await LoadVarietiesForCycleAsync(permit.HarvestCycleId ?? 0);
 
             ViewBag.ReturnPage = page;
             ViewBag.ReturnCycleId = permit.HarvestCycleId ?? 0;
