@@ -924,7 +924,7 @@ namespace FruitBilling.Web.Controllers
                 .ThenByDescending(x => x.CycleNumber)
                 .ToListAsync();
 
-            var bytes = BuildTemplate(cycles.Select(x => x.Name), FarmImportHeaders, new[] { 8, 16, 17 });
+            var bytes = BuildTemplate(cycles.Select(x => x.Name), FarmImportHeaders, new[] { 9, 16, 17, 18 });
             if (bytes == null)
             {
                 TempData["Warning"] = "هیچ دوره‌ای با نام معتبر برای تب اکسل وجود ندارد. ابتدا دوره‌ها را تعریف کنید.";
@@ -938,7 +938,7 @@ namespace FruitBilling.Web.Controllers
 
         // ==========================================
         // 📤 پردازش فایل اکسل یکپارچه (POST)
-        //  - فقط .xlsx با ساختار مشخص (۱۷ ستون A تا Q با سربرگ دقیق)
+        //  - فقط .xlsx با قالب جدید ۲۰ ستونی یا قالب قدیمی ۱۷ ستونی
         //  - نام هر تب باید با نام یک دوره برداشت یکی باشد
         //  - هر تبِ معتبر در دوره‌ی خودش ثبت می‌شود؛ تبِ نامعتبر کلاً ثبت نمی‌شود
         // ==========================================
@@ -1034,56 +1034,15 @@ namespace FruitBilling.Web.Controllers
                         var merged = MergeFarmGroups(rows, rep);
                         if (rep.HasErrors) continue;
 
-                        // ---------- تطبیق محصول و رقم با کاتالوگ ----------
-                        var plan = new List<(FarmImportRow Head, List<FarmImportRow> TicketRows, Product? Product, ProductVariety? Variety)>();
-                        foreach (var (first, ticketRows) in merged)
-                        {
-                            Product? product = null;
-                            ProductVariety? variety = null;
-                            string label = $"برگه «{first.PermitNumber}» (مزرعه «{first.FarmName}»)";
+                        // هر برگ با کلید (مزرعه + شماره برگ) یک بار ساخته می‌شود؛
+                        // ردیف‌های محصول/رقم و قبض‌ها درون همان برگ جداگانه نگهداری می‌شوند.
+                        var categoryIds = cycle.HarvestCycleCategories.Select(x => x.CategoryId).ToArray();
+                        if (categoryIds.Length == 0 && cycle.CategoryId.HasValue)
+                            categoryIds = new[] { cycle.CategoryId.Value };
 
-                            if (first.ProductName.Length > 0)
-                            {
-                                var productKey = Norm(first.ProductName);
-                                var cands = products
-                                    .Where(p => Norm(p.Name) == productKey
-                                             && (!cycle.CategoryId.HasValue || p.CategoryId == cycle.CategoryId))
-                                    .ToList();
-
-                                if (cands.Count == 0)
-                                    rep.AddError($"{label}: محصول «{first.ProductName}» " +
-                                        (cycle.CategoryId.HasValue ? "در گونه‌ی این دوره تعریف نشده است." : "تعریف نشده است."));
-                                else if (cands.Count > 1)
-                                    rep.AddError($"{label}: چند محصول با نام «{first.ProductName}» وجود دارد.");
-                                else
-                                {
-                                    var prod = cands[0];
-                                    product = prod;
-
-                                    if (first.VarietyName.Length > 0)
-                                    {
-                                        var varietyKey = Norm(first.VarietyName);
-                                        var vs = varieties
-                                            .Where(v => v.ProductId == prod.Id && Norm(v.Name) == varietyKey)
-                                            .ToList();
-                                        if (vs.Count == 0)
-                                            rep.AddError($"{label}: رقم «{first.VarietyName}» برای محصول «{prod.Name}» تعریف نشده است.");
-                                        else
-                                            variety = vs[0];
-                                    }
-                                }
-                            }
-
-                            plan.Add((first, ticketRows, product, variety));
-                        }
-                        if (rep.HasErrors) continue;
-
-                        // ---------- ساخت رکوردها (مزرعه و قطعه‌ی ناموجود مثل صدور دستی ساخته می‌شوند) ----------
-                        foreach (var (first, ticketRows, product, variety) in plan)
+                        foreach (var (first, itemGroups) in merged)
                         {
                             string farmKey = Norm(first.FarmName);
-
-                            // جلوگیری از برگه‌ی تکراری (مزرعه + شماره برگه) در دیتابیس یا در همین فایل
                             if (!usedKeys.Add(farmKey + "|" + Norm(first.PermitNumber)))
                             {
                                 rep.Duplicates++;
@@ -1113,48 +1072,92 @@ namespace FruitBilling.Web.Controllers
 
                             var permit = new FruitExitPermit
                             {
-                                PermitNumber = first.PermitNumber,
-                                Date = NullIfEmpty(first.Date),
-                                Farm = farm,
-                                Plot = plot,
-                                ProductId = product?.Id,
-                                VarietyId = variety?.Id,
-                                ProductType = product == null ? null
-                                    : (product.Name.Length > 50 ? product.Name.Substring(0, 50) : product.Name),
-                                HarvestCycleId = cycle.Id,
-                                HarvestMethod = NullIfEmpty(first.HarvestMethod),
-                                BasketCount = first.BasketCount,
-                                BasketType = NullIfEmpty(first.BasketType),
-                                Destination = NullIfEmpty(first.Destination),
-                                VehiclePlate = NullIfEmpty(first.VehiclePlate),
-                                DriverName = NullIfEmpty(first.DriverName),
-                                ContractorName = NullIfEmpty(first.ContractorName),
-                                Description = NullIfEmpty(first.Description),
-                                Status = "در انتظار توزین",
+                                PermitNumber = first.PermitNumber, Date = NullIfEmpty(first.Date),
+                                Farm = farm, Plot = plot, HarvestCycleId = cycle.Id,
+                                Destination = NullIfEmpty(first.Destination), VehiclePlate = NullIfEmpty(first.VehiclePlate),
+                                DriverName = NullIfEmpty(first.DriverName), ContractorName = NullIfEmpty(first.ContractorName),
+                                Description = NullIfEmpty(first.Description), Status = "در انتظار توزین",
                                 CreatedAt = DateTime.Now
                             };
 
-                            foreach (var t in ticketRows)
+                            foreach (var (itemHead, ticketRows) in itemGroups)
                             {
-                                permit.BasculTickets.Add(new BasculTicket
+                                var productMatches = products.Where(p => Norm(p.Name) == Norm(itemHead.ProductName) &&
+                                    (categoryIds.Length == 0 || categoryIds.Contains(p.CategoryId ?? 0))).ToList();
+                                if (productMatches.Count != 1)
                                 {
-                                    TicketNo = t.TicketNo,
-                                    EmptyWeight = t.EmptyWeight,
-                                    GrossWeight = t.GrossWeight,
-                                    NetWeight = t.GrossWeight - t.EmptyWeight,
-                                    CreatedAt = DateTime.Now
-                                });
-                                rep.Tickets++;
+                                    rep.AddError($"برگه «{first.PermitNumber}»، ردیف {itemHead.RowNumber}: محصول «{itemHead.ProductName}» در گونه‌های این دوره پیدا نشد یا نام آن تکراری است.");
+                                    continue;
+                                }
+
+                                var product = productMatches[0];
+                                var varietyMatches = varieties.Where(v => v.ProductId == product.Id && Norm(v.Name) == Norm(itemHead.VarietyName)).ToList();
+                                if (varietyMatches.Count != 1)
+                                {
+                                    rep.AddError($"برگه «{first.PermitNumber}»، ردیف {itemHead.RowNumber}: رقم «{itemHead.VarietyName}» برای محصول «{product.Name}» پیدا نشد یا تکراری است.");
+                                    continue;
+                                }
+
+                                var variety = varietyMatches[0];
+                                var detail = new FruitExitPermitItem
+                                {
+                                    FruitExitPermit = permit, VarietyId = variety.Id,
+                                    BasketCount = itemHead.BasketCount!.Value,
+                                    BasketType = NullIfEmpty(itemHead.BasketType),
+                                    HarvestMethod = NullIfEmpty(itemHead.HarvestMethod)
+                                };
+
+                                var counts = new List<int>();
+                                if (ticketRows.Count == 1 && !ticketRows[0].TicketBasketCount.HasValue)
+                                    counts.Add(itemHead.BasketCount!.Value);
+                                else if (ticketRows.Any(t => !t.TicketBasketCount.HasValue || t.TicketBasketCount.Value <= 0))
+                                {
+                                    rep.AddError($"برگه «{first.PermitNumber}»، رقم «{itemHead.VarietyName}»: تعداد سبد هر قبض باید مشخص و مثبت باشد.");
+                                    continue;
+                                }
+                                else if (ticketRows.Count > 0)
+                                    counts.AddRange(ticketRows.Select(t => t.TicketBasketCount!.Value));
+
+                                if (ticketRows.Count > 0 && counts.Sum() != itemHead.BasketCount!.Value)
+                                {
+                                    rep.AddError($"برگه «{first.PermitNumber}»، رقم «{itemHead.VarietyName}»: مجموع سبد قبض‌ها ({counts.Sum()}) با تعداد سبد ردیف ({itemHead.BasketCount}) برابر نیست.");
+                                    continue;
+                                }
+
+                                for (int i = 0; i < ticketRows.Count; i++)
+                                {
+                                    var t = ticketRows[i];
+                                    detail.BasculTickets.Add(new BasculTicket
+                                    {
+                                        FruitExitPermit = permit, FruitExitPermitItem = detail,
+                                        TicketNo = t.TicketNo, BasketCount = counts[i],
+                                        EmptyWeight = t.EmptyWeight, GrossWeight = t.GrossWeight,
+                                        NetWeight = t.GrossWeight - t.EmptyWeight, CreatedAt = DateTime.Now
+                                    });
+                                    rep.Tickets++;
+                                }
+                                permit.Items.Add(detail);
                             }
 
-                            // اگر قبض داشت، وضعیت را توزین‌شده کن
-                            if (permit.BasculTickets.Any())
-                                permit.Status = "توزین شده";
+                            if (rep.Errors.Count + rep.HiddenErrorCount > 0) continue;
+                            if (permit.Items.Count == 0)
+                            {
+                                rep.AddError($"برگه «{first.PermitNumber}» ردیف محصول/رقم معتبری ندارد.");
+                                continue;
+                            }
 
+                            var firstVariety = varieties.First(v => v.Id == permit.Items[0].VarietyId);
+                            var firstProduct = products.First(p => p.Id == firstVariety.ProductId);
+                            permit.VarietyId = firstVariety.Id;
+                            permit.ProductId = firstProduct.Id;
+                            permit.ProductType = firstProduct.Name.Length > 50 ? firstProduct.Name[..50] : firstProduct.Name;
+                            permit.HarvestMethod = permit.Items[0].HarvestMethod;
+                            permit.BasketType = permit.Items[0].BasketType;
+                            permit.BasketCount = permit.Items.Sum(x => x.BasketCount);
+                            permit.Status = permit.Items.All(x => x.BasculTickets.Any()) ? "توزین شده" : "در انتظار توزین";
                             toAdd.Add(permit);
                             rep.Permits++;
                         }
-                    }
 
                     // یک SaveChanges = یا همه‌ی تب‌های معتبر ثبت می‌شوند یا هیچ‌کدام
                     if (toAdd.Count > 0)
@@ -1188,8 +1191,15 @@ namespace FruitBilling.Web.Controllers
         // 🆕 متدهای کمکی ورود اکسل برگ خروج از مزرعه
         // ==========================================
 
-        // سربرگ‌های الزامی (ستون A تا Q) به همین ترتیب
         private static readonly string[] FarmImportHeaders =
+        {
+            "ردیف", "شماره برگ خروج", "تاریخ", "مزرعه", "قطعه", "محصول", "رقم",
+            "روش برداشت", "تعداد سبد ردیف", "نوع سبد", "مقصد", "پلاک", "راننده",
+            "پیمانکار برداشت", "شماره قبض", "تعداد سبد قبض", "وزن خالی (kg)",
+            "وزن پر (kg)", "وزن خالص (kg)", "توضیحات"
+        };
+
+        private static readonly string[] LegacyFarmImportHeaders =
         {
             "شماره برگ خروج", "تاریخ", "نام مزرعه", "نام قطعه", "نوع محصول", "نام رقم",
             "روش برداشت", "تعداد سبد", "نوع سبد", "مقصد", "شماره پلاک", "نام راننده",
@@ -1209,182 +1219,184 @@ namespace FruitBilling.Web.Controllers
             ViewBag.UnusableCycleNames = cycles.Where(x => !IsValidSheetName(x.Name)).Select(x => x.Name).ToList();
         }
 
-        // خواندن یک تب: بررسی سربرگ، تعداد ستون‌ها، نوع و طول مقادیر، و قبض‌ها
         private static List<FarmImportRow> ParseFarmSheet(IXLWorksheet ws, SheetImportReport rep)
         {
             var rows = new List<FarmImportRow>();
-            int colCount = FarmImportHeaders.Length;
             int lastRow = ws.LastRowUsed()?.RowNumber() ?? 0;
             int lastCol = ws.LastColumnUsed()?.ColumnNumber() ?? 0;
+            if (lastRow == 0) { rep.AddError("تب خالی است."); return rows; }
 
-            if (lastRow == 0)
+            bool newFormat = Enumerable.Range(0, FarmImportHeaders.Length)
+                .All(i => Norm(ws.Cell(1, i + 1).GetString()) == Norm(FarmImportHeaders[i]));
+            bool legacyFormat = Enumerable.Range(0, LegacyFarmImportHeaders.Length)
+                .All(i => Norm(ws.Cell(1, i + 1).GetString()) == Norm(LegacyFarmImportHeaders[i]));
+            if (!newFormat && !legacyFormat)
             {
-                rep.AddError("تب خالی است.");
+                rep.AddError("سربرگ فایل با قالب جدید ۲۰ ستونی یا قالب قدیمی ۱۷ ستونی مطابقت ندارد.");
                 return rows;
             }
-
-            // ---------- سربرگ ----------
-            if (lastCol > colCount)
-                rep.AddError($"ساختار فایل باید دقیقاً {colCount} ستون (A تا Q) باشد؛ ستون اضافه پیدا شد.");
-
-            for (int i = 0; i < colCount; i++)
+            if ((newFormat && lastCol > FarmImportHeaders.Length) || (legacyFormat && lastCol > LegacyFarmImportHeaders.Length))
             {
-                var actual = ws.Cell(1, i + 1).GetString();
-                if (Norm(actual) != Norm(FarmImportHeaders[i]))
-                    rep.AddError($"عنوان ستون {XLHelper.GetColumnLetterFromNumber(i + 1)} باید «{FarmImportHeaders[i]}» باشد (در فایل: «{actual}»).");
-            }
-            if (rep.HasErrors) return rows;
-
-            if (lastRow < 2)
-            {
-                rep.AddError("تب هیچ ردیف داده‌ای ندارد.");
+                rep.AddError("فایل ستون اضافه دارد.");
                 return rows;
             }
-            if (lastRow > 20001)
-            {
-                rep.AddError("حداکثر ۲۰٬۰۰۰ ردیف در هر تب مجاز است.");
-                return rows;
-            }
+            if (lastRow < 2) { rep.AddError("تب هیچ ردیف داده‌ای ندارد."); return rows; }
+            if (lastRow > 20001) { rep.AddError("حداکثر ۲۰٬۰۰۰ ردیف در هر تب مجاز است."); return rows; }
 
-            // ---------- ردیف‌ها ----------
             for (int r = 2; r <= lastRow; r++)
             {
                 var row = ws.Row(r);
-
-                bool allEmpty = true;
+                int colCount = newFormat ? FarmImportHeaders.Length : LegacyFarmImportHeaders.Length;
+                bool empty = true;
                 for (int col = 1; col <= colCount; col++)
                 {
                     var cell = row.Cell(col);
                     if (cell.DataType != XLDataType.Blank && !(cell.DataType == XLDataType.Text && string.IsNullOrWhiteSpace(cell.GetString())))
-                    {
-                        allEmpty = false;
-                        break;
-                    }
+                    { empty = false; break; }
                 }
-                if (allEmpty) continue;
+                if (empty) continue;
 
-                int errorsBefore = rep.Errors.Count + rep.HiddenErrorCount;
+                int before = rep.Errors.Count + rep.HiddenErrorCount;
+                int offset = newFormat ? 1 : 0;
+                int? sequence = null;
+                if (newFormat) TryReadInt(row.Cell(1), FarmImportHeaders[0], r, rep, out sequence);
 
-                // کلیدهای گروه‌بندی (شماره برگه و مزرعه) در همه‌ی ردیف‌ها الزامی‌اند
-                TryReadText(row.Cell(1), FarmImportHeaders[0], 15, r, rep, true, out var permitNumber);
-                TryReadDate(row.Cell(2), r, rep, out var date);
-                TryReadText(row.Cell(3), FarmImportHeaders[2], 100, r, rep, true, out var farmName);
-                TryReadText(row.Cell(4), FarmImportHeaders[3], 100, r, rep, false, out var plotName);
-                TryReadText(row.Cell(5), FarmImportHeaders[4], 100, r, rep, false, out var productName);
-                TryReadText(row.Cell(6), FarmImportHeaders[5], 100, r, rep, false, out var varietyName);
-                TryReadText(row.Cell(7), FarmImportHeaders[6], 50, r, rep, false, out var harvestMethod);
-                TryReadInt(row.Cell(8), FarmImportHeaders[7], r, rep, out var basket);
-                TryReadText(row.Cell(9), FarmImportHeaders[8], 50, r, rep, false, out var basketType);
-                TryReadText(row.Cell(10), FarmImportHeaders[9], 100, r, rep, false, out var destination);
-                TryReadText(row.Cell(11), FarmImportHeaders[10], 20, r, rep, false, out var plate);
-                TryReadText(row.Cell(12), FarmImportHeaders[11], 100, r, rep, false, out var driver);
-                TryReadText(row.Cell(13), FarmImportHeaders[12], 100, r, rep, false, out var contractor);
-                TryReadText(row.Cell(14), FarmImportHeaders[13], 500, r, rep, false, out var description);
-                TryReadText(row.Cell(15), FarmImportHeaders[14], 30, r, rep, false, out var ticketNo);
-                TryReadInt(row.Cell(16), FarmImportHeaders[15], r, rep, out var emptyW);
-                TryReadInt(row.Cell(17), FarmImportHeaders[16], r, rep, out var grossW);
+                var h = newFormat ? FarmImportHeaders : LegacyFarmImportHeaders;
+                TryReadText(row.Cell(1 + offset), h[0 + offset], 15, r, rep, true, out var permitNo);
+                TryReadDate(row.Cell(2 + offset), r, rep, out var date);
+                TryReadText(row.Cell(3 + offset), h[2 + offset], 100, r, rep, true, out var farm);
+                TryReadText(row.Cell(4 + offset), h[3 + offset], 100, r, rep, false, out var plot);
+                TryReadText(row.Cell(5 + offset), h[4 + offset], 100, r, rep, true, out var product);
+                TryReadText(row.Cell(6 + offset), h[5 + offset], 100, r, rep, true, out var variety);
+                TryReadText(row.Cell(7 + offset), h[6 + offset], 50, r, rep, false, out var method);
+                TryReadInt(row.Cell(8 + offset), h[7 + offset], r, rep, out var basket);
+                TryReadText(row.Cell(9 + offset), h[8 + offset], 50, r, rep, false, out var basketType);
+                TryReadText(row.Cell(10 + offset), h[9 + offset], 100, r, rep, false, out var destination);
+                TryReadText(row.Cell(11 + offset), h[10 + offset], 20, r, rep, false, out var plate);
+                TryReadText(row.Cell(12 + offset), h[11 + offset], 100, r, rep, false, out var driver);
+                TryReadText(row.Cell(13 + offset), h[12 + offset], 100, r, rep, false, out var contractor);
+                TryReadText(row.Cell(14 + offset), h[13 + offset], 500, r, rep, false, out var description);
 
-                // اگر هر کدام از ستون‌های قبض پر باشد، هر سه الزامی‌اند
-                bool anyTicket = ticketNo.Length > 0 || emptyW.HasValue || grossW.HasValue;
-                if (anyTicket && rep.Errors.Count + rep.HiddenErrorCount == errorsBefore)
+                string ticketNo;
+                int? ticketBasket = null, emptyW, grossW, netW = null;
+                if (newFormat)
+                {
+                    TryReadText(row.Cell(15), FarmImportHeaders[14], 30, r, rep, false, out ticketNo);
+                    TryReadInt(row.Cell(16), FarmImportHeaders[15], r, rep, out ticketBasket);
+                    TryReadInt(row.Cell(17), FarmImportHeaders[16], r, rep, out emptyW);
+                    TryReadInt(row.Cell(18), FarmImportHeaders[17], r, rep, out grossW);
+                    TryReadInt(row.Cell(19), FarmImportHeaders[18], r, rep, out netW);
+                }
+                else
+                {
+                    TryReadText(row.Cell(15), LegacyFarmImportHeaders[14], 30, r, rep, false, out ticketNo);
+                    TryReadInt(row.Cell(16), LegacyFarmImportHeaders[15], r, rep, out emptyW);
+                    TryReadInt(row.Cell(17), LegacyFarmImportHeaders[16], r, rep, out grossW);
+                }
+
+                bool anyTicket = ticketNo.Length > 0 || ticketBasket.HasValue || emptyW.HasValue || grossW.HasValue || netW.HasValue;
+                if (anyTicket && rep.Errors.Count + rep.HiddenErrorCount == before)
                 {
                     if (ticketNo.Length == 0 || !emptyW.HasValue || !grossW.HasValue)
-                        rep.AddError($"ردیف {r}: برای ثبت قبض باید «شماره قبض باسکول»، «وزن خالی» و «وزن پر» هر سه پر باشند.");
-                    else if (grossW.Value <= emptyW.Value)
-                        rep.AddError($"ردیف {r}: وزن پر ({grossW.Value}) باید بزرگ‌تر از وزن خالی ({emptyW.Value}) باشد.");
+                        rep.AddError($"ردیف {r}: برای ثبت قبض باید شماره قبض، وزن خالی و وزن پر هر سه وارد شوند.");
+                    else if (emptyW.Value < 0 || grossW.Value <= emptyW.Value)
+                        rep.AddError($"ردیف {r}: وزن خالی نباید منفی باشد و وزن پر باید از وزن خالی بیشتر باشد.");
+                    else if (ticketBasket.HasValue && ticketBasket.Value <= 0)
+                        rep.AddError($"ردیف {r}: تعداد سبد قبض باید بیشتر از صفر باشد.");
+                    else if (netW.HasValue && netW.Value != grossW.Value - emptyW.Value)
+                        rep.AddError($"ردیف {r}: وزن خالص باید برابر تفاضل وزن پر و وزن خالی باشد.");
                 }
-
-                if (rep.Errors.Count + rep.HiddenErrorCount != errorsBefore) continue;
+                if (rep.Errors.Count + rep.HiddenErrorCount != before) continue;
+                if (!basket.HasValue || basket.Value <= 0)
+                { rep.AddError($"ردیف {r}: تعداد سبد ردیف باید بیشتر از صفر باشد."); continue; }
 
                 rows.Add(new FarmImportRow
                 {
-                    RowNumber = r,
-                    PermitNumber = permitNumber,
-                    Date = date,
-                    FarmName = farmName,
-                    PlotName = plotName,
-                    ProductName = productName,
-                    VarietyName = varietyName,
-                    HarvestMethod = harvestMethod,
-                    BasketCount = basket,
-                    BasketType = basketType,
-                    Destination = destination,
-                    VehiclePlate = plate,
-                    DriverName = driver,
-                    ContractorName = contractor,
-                    Description = description,
-                    TicketNo = ticketNo,
-                    EmptyWeight = emptyW ?? 0,
-                    GrossWeight = grossW ?? 0
+                    RowNumber = r, SequenceNumber = sequence, IsLegacyFormat = legacyFormat,
+                    PermitNumber = permitNo, Date = date, FarmName = farm, PlotName = plot,
+                    ProductName = product, VarietyName = variety, HarvestMethod = method,
+                    BasketCount = basket, BasketType = basketType, Destination = destination,
+                    VehiclePlate = plate, DriverName = driver, ContractorName = contractor,
+                    Description = description, TicketNo = ticketNo, TicketBasketCount = ticketBasket,
+                    EmptyWeight = emptyW ?? 0, GrossWeight = grossW ?? 0, NetWeight = netW
                 });
             }
-
-            if (!rep.HasErrors && rows.Count == 0)
-                rep.AddError("تب هیچ ردیف داده‌ای ندارد.");
-
+            if (!rep.HasErrors && rows.Count == 0) rep.AddError("تب هیچ ردیف داده‌ای ندارد.");
             return rows;
         }
 
-        // ردیف‌های هم‌کلید (مزرعه + شماره برگه) = یک برگه با چند قبض.
-        // مقادیر خالی از ردیف‌های دیگر پر می‌شود؛ مقادیر ناهمسان خطا است.
-        private static List<(FarmImportRow Head, List<FarmImportRow> TicketRows)> MergeFarmGroups(List<FarmImportRow> rows, SheetImportReport rep)
+        private static List<(FarmImportRow Head, List<(FarmImportRow Head, List<FarmImportRow> TicketRows)> Items)> MergeFarmGroups(
+            List<FarmImportRow> rows, SheetImportReport rep)
         {
-            var result = new List<(FarmImportRow, List<FarmImportRow>)>();
-
-            foreach (var g in rows.GroupBy(x => Norm(x.PermitNumber) + "|" + Norm(x.FarmName)))
+            var result = new List<(FarmImportRow, List<(FarmImportRow, List<FarmImportRow>)>)>();
+            foreach (var g in rows.GroupBy(x => (Permit: Norm(x.PermitNumber), Farm: Norm(x.FarmName))))
             {
                 var list = g.ToList();
-                var head = new FarmImportRow
-                {
-                    RowNumber = list[0].RowNumber,
-                    PermitNumber = list[0].PermitNumber,
-                    FarmName = list[0].FarmName
-                };
+                var head = new FarmImportRow { RowNumber = list[0].RowNumber, PermitNumber = list[0].PermitNumber, FarmName = list[0].FarmName };
                 string label = $"برگه «{head.PermitNumber}» (مزرعه «{head.FarmName}»)";
 
-                void MergeText(string title, Func<FarmImportRow, string> get, Action<FarmImportRow, string> set, bool required)
+                void MergePermit(string title, Func<FarmImportRow, string> get, Action<FarmImportRow, string> set, bool required)
                 {
-                    var distinct = list.Where(x => !string.IsNullOrWhiteSpace(get(x)))
-                                       .GroupBy(x => Norm(get(x))).ToList();
-                    if (distinct.Count > 1)
-                        rep.AddError($"{label}: مقدار ستون «{title}» در ردیف‌های {string.Join("، ", distinct.Select(d => d.First().RowNumber))} با هم تفاوت دارد.");
-                    else if (distinct.Count == 1)
-                        set(head, get(distinct[0].First()));
-                    else if (required)
-                        rep.AddError($"{label}: ستون «{title}» الزامی است.");
+                    var values = list.Where(x => !string.IsNullOrWhiteSpace(get(x))).GroupBy(x => Norm(get(x))).ToList();
+                    if (values.Count > 1) rep.AddError($"{label}: ستون «{title}» در ردیف‌های {string.Join("، ", values.Select(v => v.First().RowNumber))} متفاوت است.");
+                    else if (values.Count == 1) set(head, get(values[0].First()));
+                    else if (required) rep.AddError($"{label}: ستون «{title}» الزامی است.");
                 }
 
-                MergeText(FarmImportHeaders[1], x => x.Date, (h, v) => h.Date = v, true);
-                MergeText(FarmImportHeaders[3], x => x.PlotName, (h, v) => h.PlotName = v, false);
-                MergeText(FarmImportHeaders[4], x => x.ProductName, (h, v) => h.ProductName = v, false);
-                MergeText(FarmImportHeaders[5], x => x.VarietyName, (h, v) => h.VarietyName = v, false);
-                MergeText(FarmImportHeaders[6], x => x.HarvestMethod, (h, v) => h.HarvestMethod = v, false);
-                MergeText(FarmImportHeaders[8], x => x.BasketType, (h, v) => h.BasketType = v, false);
-                MergeText(FarmImportHeaders[9], x => x.Destination, (h, v) => h.Destination = v, false);
-                MergeText(FarmImportHeaders[10], x => x.VehiclePlate, (h, v) => h.VehiclePlate = v, false);
-                MergeText(FarmImportHeaders[11], x => x.DriverName, (h, v) => h.DriverName = v, false);
-                MergeText(FarmImportHeaders[12], x => x.ContractorName, (h, v) => h.ContractorName = v, false);
-                MergeText(FarmImportHeaders[13], x => x.Description, (h, v) => h.Description = v, false);
+                MergePermit("تاریخ", x => x.Date, (h, v) => h.Date = v, true);
+                MergePermit("قطعه", x => x.PlotName, (h, v) => h.PlotName = v, false);
+                MergePermit("مقصد", x => x.Destination, (h, v) => h.Destination = v, false);
+                MergePermit("پلاک", x => x.VehiclePlate, (h, v) => h.VehiclePlate = v, false);
+                MergePermit("راننده", x => x.DriverName, (h, v) => h.DriverName = v, false);
+                MergePermit("پیمانکار برداشت", x => x.ContractorName, (h, v) => h.ContractorName = v, false);
+                MergePermit("توضیحات", x => x.Description, (h, v) => h.Description = v, false);
 
-                var baskets = list.Where(x => x.BasketCount.HasValue).GroupBy(x => x.BasketCount!.Value).ToList();
-                if (baskets.Count > 1)
-                    rep.AddError($"{label}: مقدار ستون «{FarmImportHeaders[7]}» در ردیف‌های {string.Join("، ", baskets.Select(b => b.First().RowNumber))} با هم تفاوت دارد.");
-                else if (baskets.Count == 1)
-                    head.BasketCount = baskets[0].Key;
+                var items = new List<(FarmImportRow, List<FarmImportRow>)>();
+                foreach (var ig in list.GroupBy(x => (Product: Norm(x.ProductName), Variety: Norm(x.VarietyName))))
+                {
+                    var itemRows = ig.ToList();
+                    var item = itemRows[0];
+                    if (string.IsNullOrWhiteSpace(item.ProductName) || string.IsNullOrWhiteSpace(item.VarietyName))
+                    { rep.AddError($"{label}، ردیف {item.RowNumber}: محصول و رقم الزامی است."); continue; }
 
-                if (head.VarietyName.Length > 0 && head.ProductName.Length == 0)
-                    rep.AddError($"{label}: برای ثبت «{FarmImportHeaders[5]}» ستون «{FarmImportHeaders[4]}» هم باید پر باشد.");
+                    var basketValues = itemRows.Select(x => x.BasketCount!.Value).Distinct().ToList();
+                    if (basketValues.Count != 1 || basketValues[0] <= 0)
+                    { rep.AddError($"{label}، رقم «{item.VarietyName}»: تعداد سبد ردیف باید در تمام ردیف‌های آن یکسان و مثبت باشد."); continue; }
 
-                result.Add((head, list.Where(x => x.TicketNo.Length > 0).ToList()));
+                    foreach (var field in new[] {
+                        (Title:"روش برداشت", Get:(Func<FarmImportRow,string>)(x=>x.HarvestMethod)),
+                        (Title:"نوع سبد", Get:(Func<FarmImportRow,string>)(x=>x.BasketType))
+                    })
+                    {
+                        var vals = itemRows.Where(x=>!string.IsNullOrWhiteSpace(field.Get(x))).GroupBy(x=>Norm(field.Get(x))).ToList();
+                        if (vals.Count > 1) rep.AddError($"{label}، رقم «{item.VarietyName}»: ستون «{field.Title}» متفاوت است.");
+                    }
+
+                    var tickets = itemRows.Where(x=>!string.IsNullOrWhiteSpace(x.TicketNo)).ToList();
+                    if (tickets.Count == 1 && !tickets[0].TicketBasketCount.HasValue)
+                    {
+                        // فایل ۱۷ ستونی قدیمی: یک قبض، تمام سبدهای ردیف را پوشش می‌دهد.
+                    }
+                    else if (tickets.Any(x=>!x.TicketBasketCount.HasValue || x.TicketBasketCount.Value<=0))
+                        rep.AddError($"{label}، رقم «{item.VarietyName}»: تعداد سبد هر قبض باید مشخص و مثبت باشد.");
+                    else if (tickets.Count>0 && tickets.Sum(x=>x.TicketBasketCount!.Value)!=basketValues[0])
+                        rep.AddError($"{label}، رقم «{item.VarietyName}»: مجموع سبد قبض‌ها باید برابر تعداد سبد ردیف باشد.");
+
+                    item.BasketCount = basketValues[0];
+                    item.HarvestMethod = itemRows.Select(x=>x.HarvestMethod).FirstOrDefault(x=>!string.IsNullOrWhiteSpace(x)) ?? "";
+                    item.BasketType = itemRows.Select(x=>x.BasketType).FirstOrDefault(x=>!string.IsNullOrWhiteSpace(x)) ?? "";
+                    items.Add((item,tickets));
+                }
+                result.Add((head,items));
             }
-
             return result;
         }
 
-        // ردیف خوانده‌شده از اکسل
         public class FarmImportRow
         {
             public int RowNumber { get; set; }
+            public int? SequenceNumber { get; set; }
+            public bool IsLegacyFormat { get; set; }
             public string PermitNumber { get; set; } = "";
             public string Date { get; set; } = "";
             public string FarmName { get; set; } = "";
@@ -1400,8 +1412,10 @@ namespace FruitBilling.Web.Controllers
             public string ContractorName { get; set; } = "";
             public string Description { get; set; } = "";
             public string TicketNo { get; set; } = "";
+            public int? TicketBasketCount { get; set; }
             public int EmptyWeight { get; set; }
             public int GrossWeight { get; set; }
+            public int? NetWeight { get; set; }
         }
 
         // ==========================================
