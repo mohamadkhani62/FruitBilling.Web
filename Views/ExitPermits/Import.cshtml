@@ -37,7 +37,10 @@
 
         <div asp-validation-summary="All" class="text-danger mb-3"></div>
 
-        <button class="btn btn-primary">📤 آپلود و ذخیره</button>
+        <div class="d-flex flex-wrap gap-2">
+            <button type="submit" name="previewOnly" value="true" class="btn btn-outline-primary">🔎 بررسی و پیش‌نمایش (بدون ذخیره)</button>
+            <button type="submit" name="previewOnly" value="false" class="btn btn-primary">📥 بررسی و ثبت اطلاعات</button>
+        </div>
         <a asp-action="DownloadTemplate" class="btn btn-outline-success">📄 دانلود قالب اکسل</a>
         <a asp-action="Index" class="btn btn-secondary">بازگشت</a>
     </form>
