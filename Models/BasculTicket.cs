@@ -7,6 +7,7 @@ namespace FruitBilling.Web.Models
     {
         public int Id { get; set; }
 
+        // FK قدیمی تا زمان انتقال کامل فرم‌ها و داده‌ها حفظ می‌شود.
         public int FruitExitPermitId { get; set; }
         [ForeignKey("FruitExitPermitId")]
         public FruitExitPermit? FruitExitPermit { get; set; }
