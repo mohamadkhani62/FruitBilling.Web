@@ -104,6 +104,195 @@ namespace FruitBilling.Web.Controllers
             return View(items);
         }
         // ==========================================
+        // گزارش تطبیق قبض‌های خروج مزرعه و خروج برای سورت
+        // این گزارش فقط خواندنی است و هیچ داده‌ای را تغییر نمی‌دهد.
+        // ==========================================
+        [HttpGet]
+        public async Task<IActionResult> Reconciliation(int? cycleId)
+        {
+            if (!cycleId.HasValue)
+            {
+                var latestCycle = await _db.HarvestCycles.AsNoTracking()
+                    .OrderByDescending(x => x.Year).ThenByDescending(x => x.CycleNumber)
+                    .FirstOrDefaultAsync();
+                cycleId = latestCycle?.Id ?? 0;
+            }
+
+            var cycles = await _db.HarvestCycles.AsNoTracking()
+                .OrderByDescending(x => x.Year).ThenByDescending(x => x.CycleNumber).ToListAsync();
+            ViewBag.Cycles = new SelectList(cycles, "Id", "Name", cycleId);
+            ViewBag.SelectedCycleId = cycleId;
+
+            var farmPermits = await _db.FruitExitPermits.AsNoTracking()
+                .Include(p => p.Items).ThenInclude(i => i.Variety).ThenInclude(v => v.Product)
+                .Include(p => p.Items).ThenInclude(i => i.BasculTickets)
+                .Include(p => p.BasculTickets)
+                .Include(p => p.Variety).ThenInclude(v => v!.Product)
+                .Where(p => cycleId == 0 ? p.HarvestCycleId == null : p.HarvestCycleId == cycleId)
+                .ToListAsync();
+
+            var sortingPermits = await _db.SortingExitPermits.AsNoTracking()
+                .Include(p => p.Items).ThenInclude(i => i.Variety).ThenInclude(v => v.Product)
+                .Include(p => p.Items).ThenInclude(i => i.BasculTickets)
+                .Include(p => p.BasculTickets)
+                .Include(p => p.Variety).ThenInclude(v => v!.Product)
+                .Where(p => cycleId == 0 ? p.HarvestCycleId == null : p.HarvestCycleId == cycleId)
+                .ToListAsync();
+
+            var farmTickets = new List<ReconciliationTicketSnapshot>();
+            var sortingTickets = new List<ReconciliationTicketSnapshot>();
+
+            void AddSnapshot(List<ReconciliationTicketSnapshot> target, string side,
+                string permitNumber, string? date, string? plate, string? ticketNo,
+                int? varietyId, string? productName, string? varietyName,
+                int? basketCount, int emptyWeight, int grossWeight)
+            {
+                var normalizedTicket = Norm(ticketNo);
+                var normalizedDate = Norm(date);
+                var normalizedPlate = Norm(plate);
+                var validKey = normalizedTicket.Length > 0 && normalizedDate.Length > 0 &&
+                    normalizedPlate.Length > 0 && varietyId.HasValue;
+                target.Add(new ReconciliationTicketSnapshot
+                {
+                    Side = side,
+                    Key = validKey ? string.Join("|", normalizedTicket, normalizedDate, normalizedPlate, varietyId!.Value) : "",
+                    TicketNo = ticketNo ?? "",
+                    Date = date ?? "",
+                    VehiclePlate = plate ?? "",
+                    ProductName = productName ?? "",
+                    VarietyName = varietyName ?? "",
+                    PermitNumber = permitNumber ?? "",
+                    BasketCount = basketCount,
+                    EmptyWeight = emptyWeight,
+                    GrossWeight = grossWeight
+                });
+            }
+
+            foreach (var permit in farmPermits.Where(p => Norm(p.Destination).Contains(Norm("سورت"))))
+            {
+                foreach (var item in permit.Items)
+                {
+                    foreach (var ticket in item.BasculTickets)
+                        AddSnapshot(farmTickets, "مزرعه", permit.PermitNumber, permit.Date, permit.VehiclePlate,
+                            ticket.TicketNo, item.VarietyId, item.Variety?.Product?.Name, item.Variety?.Name,
+                            ticket.BasketCount, ticket.EmptyWeight, ticket.GrossWeight);
+                }
+
+                foreach (var ticket in permit.BasculTickets.Where(t => !t.FruitExitPermitItemId.HasValue))
+                    AddSnapshot(farmTickets, "مزرعه", permit.PermitNumber, permit.Date, permit.VehiclePlate,
+                        ticket.TicketNo, permit.VarietyId, permit.Variety?.Product?.Name, permit.Variety?.Name,
+                        ticket.BasketCount, ticket.EmptyWeight, ticket.GrossWeight);
+            }
+
+            foreach (var permit in sortingPermits.Where(p =>
+                Norm(SortingMovement.CanonicalExitType(p.MovementType)).Contains(Norm(SortingMovement.ExitForSorting))))
+            {
+                foreach (var item in permit.Items)
+                {
+                    foreach (var ticket in item.BasculTickets)
+                        AddSnapshot(sortingTickets, "سورتینگ", permit.PermitNumber, permit.Date, permit.VehiclePlate,
+                            ticket.TicketNo, item.VarietyId, item.Variety?.Product?.Name, item.Variety?.Name,
+                            ticket.BasketCount, ticket.EmptyWeight, ticket.GrossWeight);
+                }
+
+                foreach (var ticket in permit.BasculTickets.Where(t => !t.SortingExitPermitItemId.HasValue))
+                    AddSnapshot(sortingTickets, "سورتینگ", permit.PermitNumber, permit.Date, permit.VehiclePlate,
+                        ticket.TicketNo, permit.VarietyId, permit.Variety?.Product?.Name, permit.Variety?.Name,
+                        ticket.BasketCount, ticket.EmptyWeight, ticket.GrossWeight);
+            }
+
+            var farmGroups = farmTickets.Where(x => x.Key.Length > 0).GroupBy(x => x.Key)
+                .ToDictionary(g => g.Key, g => g.ToList());
+            var sortingGroups = sortingTickets.Where(x => x.Key.Length > 0).GroupBy(x => x.Key)
+                .ToDictionary(g => g.Key, g => g.ToList());
+
+            var report = new PermitReconciliationViewModel
+            {
+                HarvestCycleId = cycleId,
+                HarvestCycleName = cycleId == 0 ? "بدون دوره" : cycles.FirstOrDefault(x => x.Id == cycleId)?.Name
+            };
+
+            foreach (var ticket in farmTickets.Where(x => x.Key.Length == 0))
+                report.Rows.Add(new PermitReconciliationRow
+                {
+                    Status = "اطلاعات ناکافی",
+                    Details = "برای تطبیق، شماره قبض، تاریخ، پلاک و رقم باید ثبت شده باشند.",
+                    TicketNo = ticket.TicketNo, Date = ticket.Date, VehiclePlate = ticket.VehiclePlate,
+                    ProductName = ticket.ProductName, VarietyName = ticket.VarietyName,
+                    FarmPermitNumber = ticket.PermitNumber, FarmBasketCount = ticket.BasketCount,
+                    FarmEmptyWeight = ticket.EmptyWeight, FarmGrossWeight = ticket.GrossWeight
+                });
+
+            foreach (var ticket in sortingTickets.Where(x => x.Key.Length == 0))
+                report.Rows.Add(new PermitReconciliationRow
+                {
+                    Status = "اطلاعات ناکافی",
+                    Details = "برای تطبیق، شماره قبض، تاریخ، پلاک و رقم باید ثبت شده باشند.",
+                    TicketNo = ticket.TicketNo, Date = ticket.Date, VehiclePlate = ticket.VehiclePlate,
+                    ProductName = ticket.ProductName, VarietyName = ticket.VarietyName,
+                    SortingPermitNumber = ticket.PermitNumber, SortingBasketCount = ticket.BasketCount,
+                    SortingEmptyWeight = ticket.EmptyWeight, SortingGrossWeight = ticket.GrossWeight
+                });
+
+            foreach (var key in farmGroups.Keys.Union(sortingGroups.Keys))
+            {
+                farmGroups.TryGetValue(key, out var farmMatches);
+                sortingGroups.TryGetValue(key, out var sortingMatches);
+                farmMatches ??= new List<ReconciliationTicketSnapshot>();
+                sortingMatches ??= new List<ReconciliationTicketSnapshot>();
+                var farm = farmMatches.FirstOrDefault();
+                var sorting = sortingMatches.FirstOrDefault();
+                var sample = farm ?? sorting!;
+
+                var row = new PermitReconciliationRow
+                {
+                    TicketNo = sample.TicketNo, Date = sample.Date, VehiclePlate = sample.VehiclePlate,
+                    ProductName = sample.ProductName, VarietyName = sample.VarietyName,
+                    FarmPermitNumber = farm?.PermitNumber ?? "",
+                    SortingPermitNumber = sorting?.PermitNumber ?? "",
+                    FarmBasketCount = farm?.BasketCount, SortingBasketCount = sorting?.BasketCount,
+                    FarmEmptyWeight = farm?.EmptyWeight, SortingEmptyWeight = sorting?.EmptyWeight,
+                    FarmGrossWeight = farm?.GrossWeight, SortingGrossWeight = sorting?.GrossWeight
+                };
+
+                if (farmMatches.Count > 1 || sortingMatches.Count > 1)
+                {
+                    row.Status = "تطبیق مبهم";
+                    row.Details = $"تعداد رکوردهای هم‌مشخصات: مزرعه {farmMatches.Count}، سورتینگ {sortingMatches.Count}. به علت احتمال تکرار شماره قبض در باسکول‌های مختلف، تطبیق خودکار انجام نشد.";
+                }
+                else if (farm == null || sorting == null)
+                {
+                    row.Status = "فاقد طرف مقابل";
+                    row.Details = farm == null
+                        ? "این قبض خروج برای سورت در مزرعه، رکورد متناظر در سورتینگ ندارد."
+                        : "این قبض خروج سورتینگ، رکورد متناظر در قبض‌های خروج مزرعه ندارد.";
+                }
+                else
+                {
+                    var differences = new List<string>();
+                    if (farm.BasketCount != sorting.BasketCount) differences.Add("تعداد سبد");
+                    if (farm.EmptyWeight != sorting.EmptyWeight) differences.Add("وزن خالی");
+                    if (farm.GrossWeight != sorting.GrossWeight) differences.Add("وزن پر");
+                    row.Status = differences.Count == 0 ? "تطبیق کامل" : "مغایرت اطلاعات";
+                    row.Details = differences.Count == 0
+                        ? "شماره قبض، تاریخ، پلاک، رقم، تعداد سبد و وزن‌ها مطابقت دارند."
+                        : "مغایرت در: " + string.Join("، ", differences);
+                }
+
+                report.Rows.Add(row);
+            }
+
+            report.Rows = report.Rows
+                .OrderBy(x => x.Status == "مغایرت اطلاعات" ? 0 :
+                    x.Status == "تطبیق مبهم" ? 1 :
+                    x.Status == "فاقد طرف مقابل" ? 2 :
+                    x.Status == "اطلاعات ناکافی" ? 3 : 4)
+                .ThenBy(x => x.Date).ThenBy(x => x.TicketNo).ToList();
+
+            return View(report);
+        }
+
+        // ==========================================
         // ۲. ایجاد (Create)
         // ==========================================
         [HttpGet]
