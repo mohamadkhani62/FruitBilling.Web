@@ -233,75 +233,110 @@ namespace FruitBilling.Web.Controllers
         public async Task<IActionResult> Edit(int id, FruitExitPermit model, int? cycleId)
         {
             if (id != model.Id) return BadRequest();
-
-            var permit = await _db.FruitExitPermits.FindAsync(id);
+            var permit = await _db.FruitExitPermits
+                .Include(p => p.Items).ThenInclude(x => x.BasculTickets)
+                .FirstOrDefaultAsync(p => p.Id == id);
             if (permit == null) return NotFound();
 
             var userId = _userManager.GetUserId(User);
             if (string.IsNullOrEmpty(userId)) return Unauthorized();
-
             if ((permit.Status == "تأیید شده در مقصد" || permit.Status == "تأیید فروش") && !User.IsInRole("Manager"))
             {
                 TempData["Warning"] = "شما دسترسی ویرایش این رکورد تأیید شده را ندارید.";
-                return RedirectToAction(nameof(Index), new { cycleId = cycleId, focusId = model.Id });
+                return RedirectToAction(nameof(Index), new { cycleId, focusId = id });
             }
 
             var perms = await _permissionService.GetEditableFieldsAsync(userId!, "ExitPermits", permit);
-
-            // اعتبارسنجی مزرعه و قطعه در سمت سرور؛ قطعه باید متعلق به مزرعه انتخاب‌شده باشد.
             int? targetFarmId = perms.GetValueOrDefault("FarmId") ? model.FarmId : permit.FarmId;
             int? targetPlotId = perms.GetValueOrDefault("PlotId") ? model.PlotId : permit.PlotId;
-
-            if (targetFarmId.HasValue &&
-                !await _db.Farms.AnyAsync(f => f.Id == targetFarmId.Value))
+            if (targetFarmId.HasValue && !await _db.Farms.AnyAsync(f => f.Id == targetFarmId.Value))
                 ModelState.AddModelError(nameof(model.FarmId), "مزرعه انتخاب‌شده معتبر نیست.");
-
-            if (targetPlotId.HasValue &&
-                (!targetFarmId.HasValue ||
-                 !await _db.Plots.AnyAsync(p => p.Id == targetPlotId.Value && p.FarmId == targetFarmId.Value)))
+            if (targetPlotId.HasValue && (!targetFarmId.HasValue ||
+                !await _db.Plots.AnyAsync(p => p.Id == targetPlotId.Value && p.FarmId == targetFarmId.Value)))
                 ModelState.AddModelError(nameof(model.PlotId), "قطعه انتخاب‌شده متعلق به مزرعه انتخاب‌شده نیست.");
 
-            if (!ModelState.IsValid)
+            // اعتبارسنجی ردیف‌های رقم و سبد؛ شناسه ردیف فقط در همین برگ پذیرفته می‌شود.
+            if (model.Items != null)
             {
-                await LoadDropdownsForCycle(permit.HarvestCycleId ?? 0);
-                ViewBag.Farms = new SelectList(await _db.Farms.AsNoTracking().OrderBy(f => f.Name).ToListAsync(), "Id", "Name", targetFarmId);
-                ViewBag.Plots = new SelectList(await _db.Plots.AsNoTracking().OrderBy(p => p.Name).ToListAsync(), "Id", "Name", targetPlotId);
-                ViewBag.ReturnCycleId = cycleId ?? permit.HarvestCycleId;
-                ViewBag.ReturnFocusId = id;
-                return View(model);
+                var submitted = model.Items.Where(x => x.Id > 0 || x.VarietyId > 0 || x.BasketCount > 0).ToList();
+                if (submitted.Count == 0)
+                    ModelState.AddModelError("Items", "حداقل یک ردیف محصول/رقم باید باقی بماند.");
+                if (submitted.GroupBy(x => x.Id).Any(g => g.Key > 0 && g.Count() > 1))
+                    ModelState.AddModelError("Items", "شناسه ردیف تکراری است.");
+                if (submitted.Any(x => x.VarietyId <= 0 || x.BasketCount <= 0))
+                    ModelState.AddModelError("Items", "برای هر ردیف، رقم و تعداد سبد معتبر وارد کنید.");
+
+                var cycle = permit.HarvestCycleId.HasValue
+                    ? await _db.HarvestCycles.Include(c => c.HarvestCycleCategories)
+                        .FirstOrDefaultAsync(c => c.Id == permit.HarvestCycleId.Value) : null;
+                var categoryIds = cycle?.HarvestCycleCategories.Select(x => x.CategoryId).ToArray() ?? Array.Empty<int>();
+                if (categoryIds.Length == 0 && cycle?.CategoryId is int legacyCategoryId)
+                    categoryIds = new[] { legacyCategoryId };
+                var varietyIds = submitted.Select(x => x.VarietyId).Where(x => x > 0).Distinct().ToArray();
+                var varieties = await _db.ProductVarieties.Include(v => v.Product)
+                    .Where(v => varietyIds.Contains(v.Id)).ToListAsync();
+                if (varieties.Count != varietyIds.Length || varieties.Any(v => v.Product == null ||
+                    (categoryIds.Length > 0 && !categoryIds.Contains(v.Product.CategoryId ?? 0))))
+                    ModelState.AddModelError("Items", "یکی از ارقام انتخاب‌شده متعلق به گونه‌های این دوره برداشت نیست.");
+
+                var submittedIds = submitted.Where(x => x.Id > 0).Select(x => x.Id).ToHashSet();
+                if (submittedIds.Any(x => permit.Items.All(dbItem => dbItem.Id != x)))
+                    ModelState.AddModelError("Items", "یک ردیف ارسالی متعلق به این برگ خروج نیست.");
+                foreach (var removed in permit.Items.Where(x => !submittedIds.Contains(x.Id)))
+                    if (removed.BasculTickets.Any())
+                        ModelState.AddModelError("Items", $"ردیف «{removed.Variety?.Name ?? removed.Id.ToString()}» قبض باسکول دارد و حذف آن مجاز نیست.");
+
+                if (!ModelState.IsValid)
+                {
+                    await LoadDropdownsForCycle(permit.HarvestCycleId ?? 0);
+                    ViewBag.Farms = new SelectList(await _db.Farms.AsNoTracking().OrderBy(f => f.Name).ToListAsync(), "Id", "Name", targetFarmId);
+                    ViewBag.Plots = new SelectList(await _db.Plots.AsNoTracking().OrderBy(p => p.Name).ToListAsync(), "Id", "Name", targetPlotId);
+                    ViewBag.ReturnCycleId = cycleId ?? permit.HarvestCycleId;
+                    ViewBag.ReturnFocusId = id;
+                    model.Items = permit.Items;
+                    return View(model);
+                }
+
+                foreach (var removed in permit.Items.Where(x => !submittedIds.Contains(x.Id)).ToList())
+                    _db.FruitExitPermitItems.Remove(removed);
+
+                foreach (var posted in submitted)
+                {
+                    var item = posted.Id == 0 ? new FruitExitPermitItem() :
+                        permit.Items.First(x => x.Id == posted.Id);
+                    if (posted.Id == 0)
+                    {
+                        item.FruitExitPermitId = permit.Id;
+                        permit.Items.Add(item);
+                    }
+                    if (perms.GetValueOrDefault("ProductType")) item.VarietyId = posted.VarietyId;
+                    if (perms.GetValueOrDefault("BasketCount")) item.BasketCount = posted.BasketCount;
+                    if (perms.GetValueOrDefault("BasketType")) item.BasketType = posted.BasketType;
+                    if (perms.GetValueOrDefault("HarvestMethod")) item.HarvestMethod = posted.HarvestMethod;
+                }
+                if (permit.Items.Count > 0)
+                {
+                    var first = permit.Items.OrderBy(x => x.Id).First();
+                    var firstVariety = varieties.FirstOrDefault(v => v.Id == first.VarietyId)
+                        ?? await _db.ProductVarieties.Include(v => v.Product).FirstAsync(v => v.Id == first.VarietyId);
+                    permit.VarietyId = first.VarietyId;
+                    permit.ProductId = firstVariety.ProductId;
+                    permit.ProductType = firstVariety.Product?.Name;
+                    permit.BasketCount = permit.Items.Sum(x => x.BasketCount);
+                }
             }
 
             if (perms.GetValueOrDefault("PermitNumber")) permit.PermitNumber = model.PermitNumber;
             if (perms.GetValueOrDefault("Date")) permit.Date = model.Date;
             if (perms.GetValueOrDefault("FarmId")) permit.FarmId = model.FarmId;
             if (perms.GetValueOrDefault("PlotId")) permit.PlotId = model.PlotId;
-
-            if (perms.GetValueOrDefault("ProductType"))
-            {
-                permit.VarietyId = model.VarietyId;
-                if (model.VarietyId.HasValue)
-                {
-                    var variety = await _db.ProductVarieties.Include(v => v.Product).FirstOrDefaultAsync(v => v.Id == model.VarietyId.Value);
-                    if (variety != null)
-                    {
-                        permit.ProductId = variety.ProductId;
-                        permit.ProductType = variety.Product?.Name;
-                    }
-                }
-            }
-
-            if (perms.GetValueOrDefault("HarvestMethod")) permit.HarvestMethod = model.HarvestMethod;
-            if (perms.GetValueOrDefault("BasketCount")) permit.BasketCount = model.BasketCount;
-            if (perms.GetValueOrDefault("BasketType")) permit.BasketType = model.BasketType;
             if (perms.GetValueOrDefault("Destination")) permit.Destination = model.Destination;
             if (perms.GetValueOrDefault("VehiclePlate")) permit.VehiclePlate = model.VehiclePlate;
             if (perms.GetValueOrDefault("DriverName")) permit.DriverName = model.DriverName;
             if (perms.GetValueOrDefault("ContractorName")) permit.ContractorName = model.ContractorName;
             if (perms.GetValueOrDefault("Description")) permit.Description = model.Description;
-
             await _db.SaveChangesAsync();
             TempData["Msg"] = "تغییرات مجاز ذخیره شد.";
-
             return RedirectToAction(nameof(Index), new { cycleId = cycleId ?? permit.HarvestCycleId, focusId = permit.Id });
         }
 
