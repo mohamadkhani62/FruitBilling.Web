@@ -1207,10 +1207,18 @@ namespace FruitBilling.Web.Controllers
                                     {
                                         SortingExitPermit = permit,
                                         VarietyId = variety.Id,
-                                        Variety = variety,
                                         Grade = firstItemRow.Grade,
                                         BasketCount = basketValues[0]
                                     };
+
+                                    // ارقام از query بدون Tracking آمده‌اند؛ فقط FKها ذخیره می‌شوند تا EF آن‌ها را دوباره Insert نکند.
+                                    if (permit.Items.Count == 0)
+                                    {
+                                        permit.VarietyId = variety.Id;
+                                        permit.ProductId = variety.ProductId;
+                                        permit.ProductType = variety.Product?.Name;
+                                        permit.Grade = firstItemRow.Grade;
+                                    }
 
                                     for (int ticketIndex = 0; ticketIndex < ticketRows.Count; ticketIndex++)
                                     {
@@ -1234,14 +1242,6 @@ namespace FruitBilling.Web.Controllers
                                 if (permit.Items.Count > 0)
                                 {
                                     permit.BasketCount = permit.Items.Sum(x => x.BasketCount);
-                                    var primaryItem = permit.Items[0];
-                                    permit.VarietyId = primaryItem.VarietyId;
-                                    permit.Variety = primaryItem.Variety;
-                                    permit.ProductId = primaryItem.Variety.ProductId;
-                                    permit.Product = primaryItem.Variety.Product;
-                                    permit.ProductType = primaryItem.Variety.Product?.Name;
-                                    permit.Grade = primaryItem.Grade;
-
                                     permit.Status = permit.Items.All(x => x.BasculTickets.Any())
                                         ? "توزین شده"
                                         : "در انتظار توزین";
