@@ -109,7 +109,7 @@
             </div>
             <div class="col-md-4 mb-3">
                 <label asp-for="BasketCount" class="form-label"></label>
-                <input asp-for="BasketCount" class="form-control @(perms.GetValueOrDefault("BasketCount") && !lockAll ? "" : "readonly-field")" readonly="@(!perms.GetValueOrDefault("BasketCount") || lockAll)" type="number" />
+                <input asp-for="BasketCount" class="form-control readonly-field" readonly="readonly" type="number" />
             </div>
         </div>
 
@@ -117,11 +117,11 @@
         <div class="row">
             <div class="col-md-3 mb-3">
                 <label asp-for="ProductType" class="form-label"></label>
-                <input asp-for="ProductType" class="form-control @(perms.GetValueOrDefault("ProductType") && !lockAll ? "" : "readonly-field")" readonly="@(!perms.GetValueOrDefault("ProductType") || lockAll)" />
+                <input asp-for="ProductType" class="form-control readonly-field" readonly="readonly" />
             </div>
             <div class="col-md-3 mb-3">
                 <label asp-for="Grade" class="form-label"></label>
-                <select asp-for="Grade" class="form-select @(perms.GetValueOrDefault("Grade") && !lockAll ? "" : "readonly-field")" disabled="@(!perms.GetValueOrDefault("Grade") || lockAll)">
+                <select asp-for="Grade" class="form-select readonly-field" disabled="disabled">
                     <option value="">-- انتخاب درجه --</option>
                     <option value="درجه یک">درجه یک</option>
                     <option value="درجه دو">درجه دو</option>
