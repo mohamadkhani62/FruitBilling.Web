@@ -22,6 +22,18 @@
                     <li>و @rep.HiddenErrorCount خطای دیگر…</li>
                 }
             </ul>
+            @if (rep.Notes.Any())
+            {
+                <div class="alert alert-warning py-2 mt-2 mb-0" role="status">
+                    <b>⚠️ توضیحات و هشدارها:</b>
+                    <ul class="mb-0 mt-1" style="font-size: 13px;">
+                        @foreach (var n in rep.Notes)
+                        {
+                            <li>@n</li>
+                        }
+                    </ul>
+                </div>
+            }
         </div>
     }
     else
@@ -36,12 +48,15 @@
             }
             @if (rep.Notes.Any())
             {
-                <ul class="mb-0 mt-1 text-muted" style="font-size: 12px;">
-                    @foreach (var n in rep.Notes)
-                    {
-                        <li>@n</li>
-                    }
-                </ul>
+                <div class="alert alert-info py-2 mt-2 mb-0" role="status">
+                    <b>ℹ️ توضیحات:</b>
+                    <ul class="mb-0 mt-1" style="font-size: 12px;">
+                        @foreach (var n in rep.Notes)
+                        {
+                            <li>@n</li>
+                        }
+                    </ul>
+                </div>
             }
         </div>
     }
