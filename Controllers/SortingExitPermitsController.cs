@@ -165,21 +165,40 @@ namespace FruitBilling.Web.Controllers
             }
 
             items ??= new List<SortingExitPermitItem>();
-            items = items.Where(x => x.VarietyId > 0 || x.BasketCount > 0 || !string.IsNullOrWhiteSpace(x.Grade)).ToList();
-            if (items.Count == 0)
+            var indexedItems = items.Select((item, index) => (item, index)).ToList();
+            if (!indexedItems.Any(x => x.item.VarietyId > 0 || x.item.BasketCount > 0 ||
+                !string.IsNullOrWhiteSpace(x.item.Grade)))
                 ModelState.AddModelError("Items", "حداقل یک ردیف رقم و درجه اضافه کنید.");
-            if (items.Any(x => x.VarietyId <= 0 || x.BasketCount <= 0 || string.IsNullOrWhiteSpace(x.Grade)))
-                ModelState.AddModelError("Items", "برای هر ردیف، رقم، درجه و تعداد سبد معتبر وارد کنید.");
+
+            foreach (var entry in indexedItems.Where(x => x.item.VarietyId > 0 || x.item.BasketCount > 0 ||
+                !string.IsNullOrWhiteSpace(x.item.Grade)))
+            {
+                if (entry.item.VarietyId <= 0)
+                    ModelState.AddModelError($"items[{entry.index}].VarietyId", "رقم این ردیف را انتخاب کنید.");
+                if (string.IsNullOrWhiteSpace(entry.item.Grade))
+                    ModelState.AddModelError($"items[{entry.index}].Grade", "درجه این ردیف را انتخاب کنید.");
+                if (entry.item.BasketCount <= 0)
+                    ModelState.AddModelError($"items[{entry.index}].BasketCount", "تعداد سبد باید بیشتر از صفر باشد.");
+            }
+
+            items = indexedItems
+                .Where(x => x.item.VarietyId > 0 || x.item.BasketCount > 0 || !string.IsNullOrWhiteSpace(x.item.Grade))
+                .Select(x => x.item).ToList();
 
             var categoryIds = cycle.HarvestCycleCategories.Select(x => x.CategoryId).ToArray();
             if (categoryIds.Length == 0 && cycle.CategoryId.HasValue)
                 categoryIds = new[] { cycle.CategoryId.Value };
-            var varietyIds = items.Select(x => x.VarietyId).Distinct().ToArray();
+            var varietyIds = items.Select(x => x.VarietyId).Where(x => x > 0).Distinct().ToArray();
             var varieties = await _db.ProductVarieties.Include(v => v.Product)
                 .Where(v => varietyIds.Contains(v.Id)).ToListAsync();
-            if (varieties.Count != varietyIds.Length || varieties.Any(v => v.Product == null ||
-                (categoryIds.Length > 0 && !categoryIds.Contains(v.Product.CategoryId ?? 0))))
-                ModelState.AddModelError("Items", "یکی از ارقام انتخاب‌شده متعلق به گونه‌های این دوره برداشت نیست.");
+            var validVarietyIds = varieties
+                .Where(v => v.Product != null &&
+                    (categoryIds.Length == 0 || categoryIds.Contains(v.Product.CategoryId ?? 0)))
+                .Select(v => v.Id).ToHashSet();
+            foreach (var entry in indexedItems.Where(x => x.item.VarietyId > 0 &&
+                !validVarietyIds.Contains(x.item.VarietyId)))
+                ModelState.AddModelError($"items[{entry.index}].VarietyId",
+                    "رقم انتخاب‌شده در اطلاعات پایه موجود نیست یا متعلق به گونه‌های این دوره برداشت نیست.");
 
             // برای «جابجایی» باید نوع خروج مشخص شود (اگر کاربر به این فیلد دسترسی دارد)
             if (perms.GetValueOrDefault("SaleType") && perms.GetValueOrDefault("MovementType")
