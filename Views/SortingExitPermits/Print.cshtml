@@ -1,12 +1,12 @@
 ﻿@model FruitBilling.Web.Models.SortingExitPermit
 @{
-    ViewData["Title"] = "چاپ برگ خروج سورتینگ"; Layout = null;
+    ViewData["Title"] = "چاپ مجوز تحویل سورتینگ"; Layout = null;
 }
 <!DOCTYPE html>
 <html lang="fa" dir="rtl">
 <head>
     <meta charset="utf-8" />
-    <title>برگ خروج @Model.PermitNumber</title>
+    <title>مجوز تحویل @Model.PermitNumber</title>
     <style>
             body {
                 font-family: Tahoma, Arial, sans-serif;
@@ -81,8 +81,8 @@
     <div class="print-container">
         <div class="header">
             <h2>شرکت کشت و صنعت</h2>
-            <h3>برگ خروج از سالن سورتینگ</h3>
-            <p style="font-weight:bold;">شماره برگه: @Model.PermitNumber</p>
+            <h3>مجوز تحویل از سالن سورتینگ</h3>
+            <p style="font-weight:bold;">شماره مجوز تحویل: @Model.PermitNumber</p>
         </div>
 
         <table class="info-table">
