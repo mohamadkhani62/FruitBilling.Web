@@ -34,6 +34,10 @@ jobs:
         if: github.event_name == 'push' && github.ref == 'refs/heads/feature/multi-product-exit-permits'
         run: dotnet tool install --global dotnet-ef --version 10.0.15
 
+      - name: Add global .NET tools to PATH
+        if: github.event_name == 'push' && github.ref == 'refs/heads/feature/multi-product-exit-permits'
+        run: echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+
       - name: Generate migration when the model has changed
         if: github.event_name == 'push' && github.ref == 'refs/heads/feature/multi-product-exit-permits'
         shell: bash
