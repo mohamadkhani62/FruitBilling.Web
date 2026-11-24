@@ -44,12 +44,12 @@ jobs:
         run: |
           set -euo pipefail
 
-          if dotnet ef migrations has-pending-model-changes --project FruitBilling.Web.csproj; then
+          if dotnet-ef migrations has-pending-model-changes --project FruitBilling.Web.csproj; then
             echo "The EF Core model matches the current migration snapshot."
           else
             migration_name="SyncModel_${GITHUB_SHA:0:8}"
             echo "Pending EF Core model changes found. Generating ${migration_name}."
-            dotnet ef migrations add "${migration_name}" --project FruitBilling.Web.csproj --output-dir Migrations
+            dotnet-ef migrations add "${migration_name}" --project FruitBilling.Web.csproj --output-dir Migrations
           fi
 
       - name: Verify generated migration builds
