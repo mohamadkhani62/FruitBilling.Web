@@ -324,7 +324,7 @@
     function renumber() {
         body.querySelectorAll('tr').forEach((row, index) => {
             row.querySelectorAll('[name]').forEach(input => {
-                input.name = input.name.replace(/Items\\[\\d+\\]/, 'Items[' + index + ']');
+                input.name = input.name.replace(/Items\[\d+\]/, 'Items[' + index + ']');
             });
         });
         nextIndex = body.querySelectorAll('tr').length;
