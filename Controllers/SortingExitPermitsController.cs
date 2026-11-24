@@ -309,6 +309,12 @@ namespace FruitBilling.Web.Controllers
                     ModelState.AddModelError("Items", "یکی از ارقام انتخاب‌شده متعلق به گونه‌های این دوره برداشت نیست.");
 
                 var submittedIds = submitted.Where(x => x.Id > 0).Select(x => x.Id).ToHashSet();
+                var hasNewItems = submitted.Any(x => x.Id == 0);
+                var hasRemovedItems = permit.Items.Any(x => !submittedIds.Contains(x.Id));
+                bool canManageItemRows = perms.GetValueOrDefault("ProductType")
+                    && perms.GetValueOrDefault("Grade") && perms.GetValueOrDefault("BasketCount");
+                if ((hasNewItems || hasRemovedItems) && !canManageItemRows)
+                    ModelState.AddModelError("Items", "برای افزودن یا حذف ردیف، مجوز ویرایش رقم، درجه و تعداد سبد لازم است.");
                 if (submittedIds.Any(x => permit.Items.All(dbItem => dbItem.Id != x)))
                     ModelState.AddModelError("Items", "یک ردیف ارسالی متعلق به این برگ خروج نیست.");
                 foreach (var removed in permit.Items.Where(x => !submittedIds.Contains(x.Id)))
