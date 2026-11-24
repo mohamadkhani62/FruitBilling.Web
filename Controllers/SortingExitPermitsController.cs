@@ -480,13 +480,17 @@ namespace FruitBilling.Web.Controllers
         {
             if (string.IsNullOrEmpty(userId)) return false;
 
-            // 🆕 قانون قفل پس از تأیید
+            // برگه‌ی تأییدشده فقط برای مدیر قابل تغییر است.
             if ((permit.Status == "تأیید فروش" || permit.Status == "تأیید شده توسط فروش") && !User.IsInRole("Manager"))
                 return false;
 
             var perms = await _permissionService.GetEditableFieldsAsync(userId, "SortingExitPermits", permit);
-            return perms.GetValueOrDefault("TicketNo_Sort") || perms.GetValueOrDefault("EmptyWeight_Sort") ||
-                   perms.GetValueOrDefault("GrossWeight_Sort") || perms.GetValueOrDefault("NetWeight_Sort");
+
+            // افزودن/حذف قبض قدیمی نیازمند اجازه ویرایش همه‌ی فیلدهای ضروری قبض است.
+            // وزن خالص محاسباتی است و هرگز مجوز مستقل ویرایش محسوب نمی‌شود.
+            return perms.GetValueOrDefault("TicketNo_Sort")
+                && perms.GetValueOrDefault("EmptyWeight_Sort")
+                && perms.GetValueOrDefault("GrossWeight_Sort");
         }
 
         [HttpGet]
@@ -664,20 +668,42 @@ namespace FruitBilling.Web.Controllers
             if (permit == null) return NotFound();
 
             var userId = _userManager.GetUserId(User);
-            if (string.IsNullOrEmpty(userId) || !await CanManageBasculTicketsAsync(userId!, permit))
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
+
+            bool isApproved = permit.Status == "تأیید فروش" || permit.Status == "تأیید شده توسط فروش";
+            if (isApproved && !User.IsInRole("Manager"))
             {
-                TempData["Warning"] = "شما دسترسی ثبت توزین را ندارید.";
+                TempData["Warning"] = "این برگه تأیید شده است و فقط مدیر می‌تواند توزین آن را تغییر دهد.";
                 return RedirectToAction(nameof(Index), new { cycleId = permit.HarvestCycleId ?? 0, focusId = permit.Id });
             }
+
+            var perms = await _permissionService.GetEditableFieldsAsync(userId, "SortingExitPermits", permit);
+            bool canEditTicketNo = perms.GetValueOrDefault("TicketNo_Sort");
+            bool canEditBasketCount = perms.GetValueOrDefault("BasketCount_Sort");
+            bool canEditEmptyWeight = perms.GetValueOrDefault("EmptyWeight_Sort");
+            bool canEditGrossWeight = perms.GetValueOrDefault("GrossWeight_Sort");
+            bool canEditAnyTicketField = canEditTicketNo || canEditBasketCount || canEditEmptyWeight || canEditGrossWeight;
+
+            if (!canEditAnyTicketField)
+            {
+                TempData["Warning"] = "شما برای هیچ‌یک از فیلدهای قبض باسکول مجوز ویرایش ندارید.";
+                return RedirectToAction(nameof(Index), new { cycleId = permit.HarvestCycleId ?? 0, focusId = permit.Id });
+            }
+
+            bool canCreateTicket = canEditTicketNo && canEditEmptyWeight && canEditGrossWeight;
+            bool canManageTicketRows = canCreateTicket && canEditBasketCount;
 
             model.Items ??= new List<SortingExitPermitItem>();
             var submittedItems = model.Items.ToList();
             var validItemIds = permit.Items.Select(x => x.Id).ToHashSet();
+
             if (validItemIds.Count == 0)
             {
                 TempData["Warning"] = "این برگ سورتینگ ردیف رقم/درجه ندارد و قابل توزین نیست.";
                 return RedirectToAction(nameof(Weigh), new { id });
             }
+
             if (submittedItems.GroupBy(x => x.Id).Any(g => g.Count() > 1) ||
                 submittedItems.Any(x => !validItemIds.Contains(x.Id)) ||
                 !submittedItems.Select(x => x.Id).ToHashSet().SetEquals(validItemIds))
@@ -687,43 +713,124 @@ namespace FruitBilling.Web.Controllers
             }
 
             var ticketIdsSeen = new HashSet<int>();
-            var prepared = new List<(SortingExitPermitItem Item, List<SortingBasculTicket> Tickets)>();
+            var prepared = new List<(SortingExitPermitItem Item,
+                List<(int Id, string TicketNo, int BasketCount, int EmptyWeight, int GrossWeight)> Tickets)>();
+
             foreach (var item in permit.Items)
             {
                 var submittedItem = submittedItems.Single(x => x.Id == item.Id);
-                var tickets = (submittedItem.BasculTickets ?? new List<SortingBasculTicket>())
-                    .Where(t => !string.IsNullOrWhiteSpace(t.TicketNo) || t.GrossWeight > 0 ||
-                                t.EmptyWeight > 0 || (t.BasketCount ?? 0) > 0)
+                var rawTickets = submittedItem.BasculTickets ?? new List<SortingBasculTicket>();
+                var activeTickets = rawTickets
+                    .Where(t => t.Id > 0 || !string.IsNullOrWhiteSpace(t.TicketNo) ||
+                                t.GrossWeight > 0 || t.EmptyWeight > 0 || (t.BasketCount ?? 0) > 0)
                     .ToList();
 
-                var existingTicketIds = item.BasculTickets.Select(t => t.Id).ToHashSet();
-                if (tickets.Any(t => t.Id > 0 && (!existingTicketIds.Contains(t.Id) || !ticketIdsSeen.Add(t.Id))))
+                var existingTicketsById = item.BasculTickets.ToDictionary(t => t.Id);
+                var postedExistingIds = activeTickets.Where(t => t.Id > 0).Select(t => t.Id).ToHashSet();
+
+                if (activeTickets.Where(t => t.Id > 0).GroupBy(t => t.Id).Any(g => g.Count() > 1) ||
+                    activeTickets.Any(t => t.Id > 0 &&
+                        (!existingTicketsById.ContainsKey(t.Id) || !ticketIdsSeen.Add(t.Id))))
                 {
                     TempData["Warning"] = "یکی از قبض‌ها متعلق به این ردیف نیست یا شناسه آن تکراری است. هیچ تغییری ذخیره نشد.";
                     return RedirectToAction(nameof(Weigh), new { id });
                 }
 
-                if (tickets.Count == 1) tickets[0].BasketCount = item.BasketCount;
-                if (tickets.Count == 0 ||
-                    tickets.Any(t => string.IsNullOrWhiteSpace(t.TicketNo) || t.GrossWeight <= t.EmptyWeight ||
-                                     t.EmptyWeight < 0 || (t.BasketCount ?? 0) <= 0) ||
-                    tickets.Sum(t => t.BasketCount ?? 0) != item.BasketCount)
+                bool hasDeletedTickets = item.BasculTickets.Any(t => !postedExistingIds.Contains(t.Id));
+                bool hasNewTickets = activeTickets.Any(t => t.Id == 0);
+                if ((hasDeletedTickets || hasNewTickets && activeTickets.Count > 1) && !canManageTicketRows)
                 {
-                    TempData["Warning"] = $"برای درجه {item.Grade} قبض معتبر ثبت کنید؛ مجموع سبد قبض‌ها باید دقیقاً {item.BasketCount} باشد و وزن پر از وزن خالی بیشتر باشد. هیچ تغییری ذخیره نشد.";
+                    TempData["Warning"] = "برای افزودن قبض اضافی یا حذف قبض، مجوز ویرایش شماره قبض، تعداد سبد و وزن‌ها لازم است. هیچ تغییری ذخیره نشد.";
                     return RedirectToAction(nameof(Weigh), new { id });
                 }
-                prepared.Add((item, tickets));
+
+                if (hasNewTickets && !canCreateTicket)
+                {
+                    TempData["Warning"] = "برای افزودن قبض جدید باید مجوز ویرایش شماره قبض، وزن خالی و وزن پر را داشته باشید.";
+                    return RedirectToAction(nameof(Weigh), new { id });
+                }
+
+                if (activeTickets.Count == 0)
+                {
+                    TempData["Warning"] = $"برای درجه {item.Grade} حداقل یک قبض معتبر لازم است. هیچ تغییری ذخیره نشد.";
+                    return RedirectToAction(nameof(Weigh), new { id });
+                }
+
+                var preparedTickets = new List<(int Id, string TicketNo, int BasketCount, int EmptyWeight, int GrossWeight)>();
+                foreach (var posted in activeTickets)
+                {
+                    existingTicketsById.TryGetValue(posted.Id, out var current);
+
+                    if (current != null)
+                    {
+                        if (!canEditTicketNo && !string.Equals(posted.TicketNo?.Trim(), current.TicketNo?.Trim(), StringComparison.Ordinal))
+                        {
+                            TempData["Warning"] = "شما مجوز ویرایش شماره قبض را ندارید. هیچ تغییری ذخیره نشد.";
+                            return RedirectToAction(nameof(Weigh), new { id });
+                        }
+                        if (!canEditEmptyWeight && posted.EmptyWeight != current.EmptyWeight)
+                        {
+                            TempData["Warning"] = "شما مجوز ویرایش وزن خالی را ندارید. هیچ تغییری ذخیره نشد.";
+                            return RedirectToAction(nameof(Weigh), new { id });
+                        }
+                        if (!canEditGrossWeight && posted.GrossWeight != current.GrossWeight)
+                        {
+                            TempData["Warning"] = "شما مجوز ویرایش وزن پر را ندارید. هیچ تغییری ذخیره نشد.";
+                            return RedirectToAction(nameof(Weigh), new { id });
+                        }
+                        if (!canEditBasketCount && activeTickets.Count > 1 &&
+                            posted.BasketCount != current.BasketCount)
+                        {
+                            TempData["Warning"] = "شما مجوز ویرایش تعداد سبد قبض را ندارید. هیچ تغییری ذخیره نشد.";
+                            return RedirectToAction(nameof(Weigh), new { id });
+                        }
+                    }
+                    else if (posted.Id != 0)
+                    {
+                        TempData["Warning"] = "شناسه قبض معتبر نیست. هیچ تغییری ذخیره نشد.";
+                        return RedirectToAction(nameof(Weigh), new { id });
+                    }
+
+                    string ticketNo = current != null && !canEditTicketNo
+                        ? current.TicketNo ?? string.Empty
+                        : (posted.TicketNo ?? string.Empty).Trim();
+                    int emptyWeight = current != null && !canEditEmptyWeight
+                        ? current.EmptyWeight : posted.EmptyWeight;
+                    int grossWeight = current != null && !canEditGrossWeight
+                        ? current.GrossWeight : posted.GrossWeight;
+                    int basketCount = activeTickets.Count == 1
+                        ? item.BasketCount
+                        : current != null && !canEditBasketCount
+                            ? current.BasketCount ?? 0
+                            : posted.BasketCount ?? 0;
+
+                    if (string.IsNullOrWhiteSpace(ticketNo) || ticketNo.Length > 30 ||
+                        emptyWeight < 0 || grossWeight <= emptyWeight || basketCount <= 0)
+                    {
+                        TempData["Warning"] = $"برای درجه {item.Grade} شماره قبض، تعداد سبد مثبت و وزن پر بزرگ‌تر از وزن خالی الزامی است. هیچ تغییری ذخیره نشد.";
+                        return RedirectToAction(nameof(Weigh), new { id });
+                    }
+
+                    preparedTickets.Add((posted.Id, ticketNo, basketCount, emptyWeight, grossWeight));
+                }
+
+                if (preparedTickets.Sum(t => t.BasketCount) != item.BasketCount)
+                {
+                    TempData["Warning"] = $"مجموع تعداد سبد قبض‌های درجه {item.Grade} باید دقیقاً برابر {item.BasketCount} باشد. هیچ تغییری ذخیره نشد.";
+                    return RedirectToAction(nameof(Weigh), new { id });
+                }
+
+                prepared.Add((item, preparedTickets));
             }
 
             var totalNetWeight = 0;
             foreach (var entry in prepared)
             {
                 var item = entry.Item;
-                var tickets = entry.Tickets;
-                var retainedIds = tickets.Where(t => t.Id > 0).Select(t => t.Id).ToHashSet();
+                var retainedIds = entry.Tickets.Where(t => t.Id > 0).Select(t => t.Id).ToHashSet();
                 _db.SortingBasculTickets.RemoveRange(item.BasculTickets.Where(t => !retainedIds.Contains(t.Id)));
 
-                foreach (var posted in tickets)
+                foreach (var posted in entry.Tickets)
                 {
                     SortingBasculTicket ticket;
                     if (posted.Id > 0)
@@ -743,7 +850,7 @@ namespace FruitBilling.Web.Controllers
 
                     ticket.SortingExitPermitId = permit.Id;
                     ticket.SortingExitPermitItemId = item.Id;
-                    ticket.TicketNo = posted.TicketNo!.Trim();
+                    ticket.TicketNo = posted.TicketNo;
                     ticket.BasketCount = posted.BasketCount;
                     ticket.EmptyWeight = posted.EmptyWeight;
                     ticket.GrossWeight = posted.GrossWeight;
