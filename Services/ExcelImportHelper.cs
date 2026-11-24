@@ -230,10 +230,6 @@ namespace FruitBilling.Web.Services
         // ساخت نسخه علامت‌گذاری‌شده از همان فایل اصلی؛ هیچ تغییری در داده‌های ورودی انجام نمی‌شود.
         public static byte[] BuildAnnotatedWorkbook(XLWorkbook workbook, IReadOnlyCollection<SheetImportReport> reports)
         {
-            var reportSheet = workbook.Worksheets.FirstOrDefault(x =>
-                string.Equals(x.Name, "گزارش بررسی", StringComparison.OrdinalIgnoreCase));
-            if (reportSheet != null) reportSheet.Delete();
-
             foreach (var report in reports)
             {
                 var ws = workbook.Worksheets.FirstOrDefault(x =>
@@ -269,7 +265,9 @@ namespace FruitBilling.Web.Services
                 ws.SheetView.FreezeRows(1);
             }
 
-            var summary = workbook.Worksheets.Add("گزارش بررسی");
+            var usedSheetNames = workbook.Worksheets.Select(x => x.Name)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var summary = workbook.Worksheets.Add(SafeSheetName("گزارش بررسی", usedSheetNames));
             summary.RightToLeft = true;
             summary.Cell(1, 1).Value = "نام تب";
             summary.Cell(1, 2).Value = "شماره ردیف";
