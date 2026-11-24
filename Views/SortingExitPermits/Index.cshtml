@@ -198,100 +198,31 @@ else
         }
         @foreach (var item in Model)
         {
-            var totalNet = item.BasculTickets?.Sum(t => t.NetWeight) ?? 0;
-
-            var ticketNos = item.BasculTickets != null && item.BasculTickets.Any()
-                ? string.Join(" | ", item.BasculTickets.Select(t => t.TicketNo))
-                : "";
-
-            <tr id="record-@item.Id" class="@(item.Id == focusId ? "focus-row" : "")">
-                <td>@rowNumber</td>
-                <td>@item.Date</td>
-                <td><b>@item.PermitNumber</b></td>
-                <td>
-                    @if (!string.IsNullOrEmpty(ticketNos))
-                    {
-                        <span>@ticketNos</span>
-                    }
-                    else
-                    {
-                        <a asp-action="Weigh" asp-route-id="@item.Id" class="icon-ticket" title="ثبت توزین">⏳</a>
-                    }
-                </td>
-                <td>@item.ProductType</td>
-                <td>@item.Grade</td>
-                <td>@item.Source</td>
-                <td>@item.Destination</td>
-                <td style="white-space: nowrap;">
-                    @if (FruitBilling.Web.Models.SortingMovement.IsInternal(item.SaleType, item.MovementType))
-                    {
-                        <span class="badge bg-secondary">@FruitBilling.Web.Models.SortingMovement.ExitLabel(item.SaleType, item.MovementType)</span>
-                    }
-                    else
-                    {
-                        <span class="badge bg-success">@FruitBilling.Web.Models.SortingMovement.ExitLabel(item.SaleType, item.MovementType)</span>
-                    }
-                </td>
-                <td>@item.SaleType</td>
-                <td>@item.SortingContractor</td>
-                <td>@item.BasketCount</td>
-                <td>@item.VehiclePlate</td>
-                <td style="white-space: nowrap;">
-                    @if (item.Status == "در انتظار توزین")
-                    {
-                        <a asp-action="Weigh" asp-route-id="@item.Id" class="btn btn-warning btn-sm">⚖️ ثبت توزین</a>
-                    }
-                    else
-                    {
-                        <span>@(totalNet > 0 ? totalNet.ToString("N0") : "-")</span>
-                    }
-                </td>
-                <td>
-                    @if (item.Status == "در انتظار توزین")
-                    {
-                        <span class="badge-pending">در انتظار توزین</span>
-                    }
-                    else if (item.Status == "توزین شده")
-                    {
-                        <span class="badge-ok">در انتظار تأیید</span>
-                    }
-                    else if (item.Status == "تأیید فروش")
-                    {
-                        <span class="badge bg-success text-white">✅ تأیید فروش</span>
-                    }
-                    else
-                    {
-                        <span class="badge bg-secondary">@item.Status</span>
-                    }
-                </td>
-                <td class="desc-col">@item.Description</td>
-                <td style="white-space: nowrap;">
-                    <!-- 🆕 دکمه تأیید فروش (فقط برای کاربرانی که دسترسی تأیید دارند) -->
-                    @if (canApprove && item.Status == "توزین شده")
-                    {
-                        <form asp-action="ConfirmBySales" asp-route-id="@item.Id" asp-route-cycleId="@selectedCycleId" method="post" style="display:inline" onsubmit="return confirm('آیا این برگه را به عنوان تأیید فروش نهایی می‌کنید؟')">
-                            @Html.AntiForgeryToken()
-                            <button type="submit" class="btn btn-success btn-sm">✅ تأیید فروش</button>
-                        </form>
-                    }
-
-                    <a asp-action="Print" asp-route-id="@item.Id" class="btn btn-info btn-sm" target="_blank">🖨️</a>
-
-                    <!-- 🆕 ویرایش با ارسال page و focusId -->
-                    <a asp-action="Edit"
-                       asp-route-id="@item.Id"
-                       asp-route-page="@currentPage"
-                       asp-route-focusId="@item.Id"
-                       class="btn btn-primary btn-sm">✏️</a>
-
-                    <!-- 🆕 حذف با ارسال page -->
-                    <form asp-action="Delete" asp-route-id="@item.Id" asp-route-page="@currentPage" method="post" style="display:inline" onsubmit="return confirm('آیا از حذف این برگه مطمئن هستید؟')">
-                        @Html.AntiForgeryToken()
-                        <button type="submit" class="btn btn-danger btn-sm">🗑</button>
-                    </form>
-                </td>
-            </tr>
-            rowNumber++;
+            if (item.Items == null || !item.Items.Any())
+            {
+                var totalNet = item.BasculTickets?.Sum(t => t.NetWeight) ?? 0;
+                var ticketNos = item.BasculTickets != null ? string.Join(" | ", item.BasculTickets.Select(t => t.TicketNo)) : "";
+                <tr id="record-@item.Id" class="@(item.Id == focusId ? "focus-row" : "")">
+                    <td>@rowNumber</td><td>@item.Date</td><td><b>@item.PermitNumber</b></td><td>@ticketNos</td><td>@item.ProductType</td><td>@item.Grade</td><td>@item.Source</td><td>@item.Destination</td>
+                    <td>@FruitBilling.Web.Models.SortingMovement.ExitLabel(item.SaleType, item.MovementType)</td><td>@item.SaleType</td><td>@item.SortingContractor</td><td>@item.BasketCount</td><td>@item.VehiclePlate</td><td>@(totalNet > 0 ? totalNet.ToString("N0") : "-")</td><td>@item.Status</td><td class="desc-col">@item.Description</td>
+                    <td><a asp-action="Print" asp-route-id="@item.Id" class="btn btn-info btn-sm" target="_blank">🖨️</a> <a asp-action="Edit" asp-route-id="@item.Id" asp-route-page="@currentPage" asp-route-focusId="@item.Id" class="btn btn-primary btn-sm">✏️</a></td>
+                </tr>
+                rowNumber++;
+            }
+            else
+            {
+                foreach (var detail in item.Items)
+                {
+                    var totalNet = detail.BasculTickets?.Sum(t => t.NetWeight) ?? 0;
+                    var ticketNos = detail.BasculTickets != null ? string.Join(" | ", detail.BasculTickets.Select(t => t.TicketNo)) : "";
+                    <tr class="@(item.Id == focusId ? "focus-row" : "")" style="background-color:@(rowNumber % 2 == 0 ? "#f5f9ff" : "#ffffff")">
+                        <td>@rowNumber</td><td>@item.Date</td><td><b>@item.PermitNumber</b></td><td>@ticketNos</td><td>@(detail.Variety?.Product?.Name ?? "-") - @(detail.Variety?.Name ?? "-")</td><td>@detail.Grade</td><td>@item.Source</td><td>@item.Destination</td>
+                        <td>@FruitBilling.Web.Models.SortingMovement.ExitLabel(item.SaleType, item.MovementType)</td><td>@item.SaleType</td><td>@item.SortingContractor</td><td>@detail.BasketCount</td><td>@item.VehiclePlate</td><td>@(totalNet > 0 ? totalNet.ToString("N0") : "-")</td><td>@item.Status</td><td class="desc-col">@item.Description</td>
+                        <td><a asp-action="Weigh" asp-route-id="@item.Id" class="btn btn-warning btn-sm">⚖️</a> <a asp-action="Print" asp-route-id="@item.Id" class="btn btn-info btn-sm" target="_blank">🖨️</a> <a asp-action="Edit" asp-route-id="@item.Id" asp-route-page="@currentPage" asp-route-focusId="@item.Id" class="btn btn-primary btn-sm">✏️</a></td>
+                    </tr>
+                    rowNumber++;
+                }
+            }
         }
     </tbody>
 </table>
