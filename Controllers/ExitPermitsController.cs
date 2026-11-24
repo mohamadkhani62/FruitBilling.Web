@@ -521,7 +521,10 @@ namespace FruitBilling.Web.Controllers
         public async Task<IActionResult> ConfirmArrival(int id, int? cycleId)
         {
             var permit = await _db.FruitExitPermits
-                .Include(p => p.Farm).Include(p => p.Plot).Include(p => p.BasculTickets)
+                .Include(p => p.Farm).Include(p => p.Plot)
+                .Include(p => p.Items).ThenInclude(x => x.Variety).ThenInclude(v => v.Product)
+                .Include(p => p.Items).ThenInclude(x => x.BasculTickets)
+                .Include(p => p.BasculTickets)
                 .FirstOrDefaultAsync(p => p.Id == id);
 
             if (permit == null) return NotFound();
@@ -739,86 +742,56 @@ namespace FruitBilling.Web.Controllers
         [HttpGet]
         public async Task<IActionResult> Export(int? cycleId)
         {
-            // با cycleId فقط همان دوره (یک تب)؛ بدون cycleId همه‌ی دوره‌ها (یک تب برای هر دوره)
-            var exportQuery = _db.FruitExitPermits
-                .Include(p => p.Farm)
-                .Include(p => p.Plot)
-                .Include(p => p.Product)
-                .Include(p => p.Variety)
-                .Include(p => p.BasculTickets)
-                .AsQueryable();
-            if (cycleId.HasValue) exportQuery = exportQuery.Where(p => p.HarvestCycleId == cycleId.Value);
-            var list = await exportQuery.OrderBy(p => p.Date).ThenBy(p => p.Id).ToListAsync();
-
-            var cycles = await _db.HarvestCycles.AsNoTracking()
-                .OrderByDescending(x => x.Year)
-                .ThenByDescending(x => x.CycleNumber)
-                .ToListAsync();
-
+            var query = _db.FruitExitPermits.Include(p => p.Farm).Include(p => p.Plot)
+                .Include(p => p.Items).ThenInclude(x => x.Variety).ThenInclude(v => v.Product)
+                .Include(p => p.Items).ThenInclude(x => x.BasculTickets).Include(p => p.BasculTickets).AsQueryable();
+            if (cycleId.HasValue) query = query.Where(p => p.HarvestCycleId == cycleId.Value);
+            var permits = await query.OrderBy(p => p.Date).ThenBy(p => p.Id).ToListAsync();
+            var cycles = await _db.HarvestCycles.AsNoTracking().OrderByDescending(x => x.Year).ThenByDescending(x => x.CycleNumber).ToListAsync();
             using var wb = new XLWorkbook();
             var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-            // نام تب = نام دوره برداشت (مثل فایل ورودی)؛ نام دوره در ردیف‌ها تکرار نمی‌شود
-            void WriteSheet(string title, List<FruitExitPermit> items)
+            void WriteSheet(string title, List<FruitExitPermit> records)
             {
                 var ws = wb.AddWorksheet(SafeSheetName(title, usedNames));
-
-                string[] headers = { "ردیف", "شماره برگ خروج", "تاریخ", "نام مزرعه", "نام قطعه", "نوع محصول", "نام رقم", "روش برداشت", "تعداد سبد", "نوع سبد", "مقصد", "شماره پلاک", "نام راننده", "پیمانکار برداشت", "توضیحات", "شماره قبض باسکول", "وزن خالص" };
-                for (int i = 0; i < headers.Length; i++) ws.Cell(1, i + 1).Value = headers[i];
-
-                for (int i = 0; i < items.Count; i++)
+                string[] headers = { "ردیف", "شماره برگ خروج", "تاریخ", "مزرعه", "قطعه", "محصول", "رقم", "روش برداشت", "تعداد سبد ردیف", "نوع سبد", "مقصد", "پلاک", "راننده", "پیمانکار برداشت", "شماره قبض", "تعداد سبد قبض", "وزن خالی (kg)", "وزن پر (kg)", "وزن خالص (kg)", "توضیحات" };
+                for (int c = 0; c < headers.Length; c++) ws.Cell(1, c + 1).Value = headers[c];
+                int row = 2, sequence = 1;
+                void WriteRow(FruitExitPermit p, FruitExitPermitItem? item, BasculTicket? ticket)
                 {
-                    var r = items[i];
-                    int row = i + 2;
-                    var totalNet = r.BasculTickets?.Sum(t => t.NetWeight) ?? 0;
-                    var ticketNos = r.BasculTickets != null && r.BasculTickets.Any()
-                        ? string.Join(" | ", r.BasculTickets.Select(t => t.TicketNo)) : null;
-
-                    ws.Cell(row, 1).Value = i + 1;
-                    ws.Cell(row, 2).Value = r.PermitNumber;
-                    ws.Cell(row, 3).Value = r.Date;
-                    ws.Cell(row, 4).Value = r.Farm?.Name;
-                    ws.Cell(row, 5).Value = r.Plot?.Name;
-                    ws.Cell(row, 6).Value = r.Product?.Name ?? r.ProductType;
-                    ws.Cell(row, 7).Value = r.Variety?.Name;
-                    ws.Cell(row, 8).Value = r.HarvestMethod;
-                    ws.Cell(row, 9).Value = r.BasketCount;
-                    ws.Cell(row, 10).Value = r.BasketType;
-                    ws.Cell(row, 11).Value = r.Destination;
-                    ws.Cell(row, 12).Value = r.VehiclePlate;
-                    ws.Cell(row, 13).Value = r.DriverName;
-                    ws.Cell(row, 14).Value = r.ContractorName;
-                    ws.Cell(row, 15).Value = r.Description;
-                    ws.Cell(row, 16).Value = ticketNos;
-                    if (totalNet > 0) ws.Cell(row, 17).Value = totalNet;
+                    ws.Cell(row, 1).Value = sequence++; ws.Cell(row, 2).Value = p.PermitNumber; ws.Cell(row, 3).Value = p.Date;
+                    ws.Cell(row, 4).Value = p.Farm?.Name; ws.Cell(row, 5).Value = p.Plot?.Name;
+                    ws.Cell(row, 6).Value = item?.Variety?.Product?.Name ?? p.ProductType; ws.Cell(row, 7).Value = item?.Variety?.Name ?? p.Variety?.Name;
+                    ws.Cell(row, 8).Value = item?.HarvestMethod ?? p.HarvestMethod; ws.Cell(row, 9).Value = item?.BasketCount ?? p.BasketCount;
+                    ws.Cell(row, 10).Value = item?.BasketType ?? p.BasketType; ws.Cell(row, 11).Value = p.Destination; ws.Cell(row, 12).Value = p.VehiclePlate;
+                    ws.Cell(row, 13).Value = p.DriverName; ws.Cell(row, 14).Value = p.ContractorName; ws.Cell(row, 15).Value = ticket?.TicketNo;
+                    if (ticket?.BasketCount is int count) ws.Cell(row, 16).Value = count;
+                    if (ticket != null) { ws.Cell(row, 17).Value = ticket.EmptyWeight; ws.Cell(row, 18).Value = ticket.GrossWeight; ws.Cell(row, 19).Value = ticket.NetWeight; }
+                    ws.Cell(row, 20).Value = p.Description; row++;
                 }
-
-                ws.RightToLeft = true;
-                ws.SheetView.FreezeRows(1);
+                foreach (var p in records)
+                {
+                    if (p.Items?.Count > 0)
+                        foreach (var item in p.Items.OrderBy(x => x.Id))
+                        {
+                            var tickets = item.BasculTickets?.OrderBy(t => t.Id).ToList() ?? new List<BasculTicket>();
+                            if (tickets.Count == 0) WriteRow(p, item, null); else foreach (var t in tickets) WriteRow(p, item, t);
+                        }
+                    else
+                    {
+                        var tickets = p.BasculTickets?.OrderBy(t => t.Id).ToList() ?? new List<BasculTicket>();
+                        if (tickets.Count == 0) WriteRow(p, null, null); else foreach (var t in tickets) WriteRow(p, null, t);
+                    }
+                }
+                ws.RightToLeft = true; ws.SheetView.FreezeRows(1); ws.Range(1, 1, 1, headers.Length).Style.Font.Bold = true; ws.Columns().AdjustToContents();
             }
-
-            foreach (var cy in cycles)
-            {
-                // در خروجی تک‌دوره، تب همان دوره همیشه ساخته می‌شود (حتی اگر خالی باشد)
-                var items = list.Where(p => p.HarvestCycleId == cy.Id).ToList();
-                if (items.Count == 0 && cycleId != cy.Id) continue;
-                WriteSheet(cy.Name, items);
-            }
-
-            // برگه‌های بدون دوره (اگر وجود داشته باشد)
-            var noCycle = list.Where(p => p.HarvestCycleId == null).ToList();
-            if (noCycle.Count > 0)
-                WriteSheet("بدون دوره", noCycle);
-
-            if (wb.Worksheets.Count == 0)
-                WriteSheet("ExitPermits", new List<FruitExitPermit>());
-
-            using var ms = new MemoryStream();
-            wb.SaveAs(ms);
+            foreach (var cycle in cycles) { var records = permits.Where(p => p.HarvestCycleId == cycle.Id).ToList(); if (records.Count == 0 && cycleId != cycle.Id) continue; WriteSheet(cycle.Name, records); }
+            var legacy = permits.Where(p => p.HarvestCycleId == null).ToList(); if (legacy.Count > 0) WriteSheet("بدون دوره", legacy);
+            if (wb.Worksheets.Count == 0) WriteSheet("خروج مزرعه", new List<FruitExitPermit>());
+            using var ms = new MemoryStream(); wb.SaveAs(ms);
             return File(ms.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", $"ExitPermits-{DateTime.Now:yyyyMMddHHmm}.xlsx");
         }
 
-        // ==========================================
+                // ==========================================
         // 📤 ورود یکپارچه اکسل برگ‌های خروج از مزرعه (GET)
         // ==========================================
         [HttpGet]
