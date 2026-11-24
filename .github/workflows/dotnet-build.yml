@@ -1,4 +1,4 @@
-name: .NET build
+name: .NET build and EF Core model validation
 
 on:
   push:
@@ -9,12 +9,17 @@ on:
       - master
       - feature/multi-product-exit-permits
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
 
       - name: Setup .NET 10 SDK
         uses: actions/setup-dotnet@v4
@@ -26,3 +31,40 @@ jobs:
 
       - name: Build
         run: dotnet build FruitBilling.Web.csproj --configuration Release --no-restore
+
+      - name: Install EF Core CLI
+        if: github.event_name == 'push' && github.ref == 'refs/heads/feature/multi-product-exit-permits'
+        run: dotnet tool install --global dotnet-ef --version 10.0.15
+
+      - name: Generate migration when the model has changed
+        if: github.event_name == 'push' && github.ref == 'refs/heads/feature/multi-product-exit-permits'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if dotnet ef migrations has-pending-model-changes --project FruitBilling.Web.csproj; then
+            echo "The EF Core model matches the current migration snapshot."
+          else
+            migration_name="SyncModel_${GITHUB_SHA:0:8}"
+            echo "Pending EF Core model changes found. Generating ${migration_name}."
+            dotnet ef migrations add "${migration_name}" --project FruitBilling.Web.csproj --output-dir Migrations
+          fi
+
+      - name: Verify generated migration builds
+        if: github.event_name == 'push' && github.ref == 'refs/heads/feature/multi-product-exit-permits'
+        run: dotnet build FruitBilling.Web.csproj --configuration Release --no-restore
+
+      - name: Commit generated migration
+        if: github.event_name == 'push' && github.ref == 'refs/heads/feature/multi-product-exit-permits'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Migrations
+          if git diff --cached --quiet; then
+            echo "No migration files were generated."
+          else
+            git commit -m "Add EF Core migration for current model"
+            git push origin "${GITHUB_REF_NAME}"
+          fi
