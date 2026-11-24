@@ -167,12 +167,47 @@
                             @if (!perms.GetValueOrDefault("Grade") || lockAll) { <input type="hidden" asp-for="Items[i].Grade" /> }
                         </td>
                         <td><input asp-for="Items[i].BasketCount" type="number" min="1" class="form-control" readonly="@(!perms.GetValueOrDefault("BasketCount") || lockAll)" /></td>
-                        <td><span class="badge bg-secondary">@(Model.Items[i].BasculTickets?.Count ?? 0) قبض</span></td>
+                        <td>
+                            <span class="badge bg-secondary">@(Model.Items[i].BasculTickets?.Count ?? 0) قبض</span>
+                            @if (perms.GetValueOrDefault("ProductType") && perms.GetValueOrDefault("Grade") && perms.GetValueOrDefault("BasketCount") && !lockAll && (Model.Items[i].BasculTickets?.Count ?? 0) == 0)
+                            {
+                                <button type="button" class="btn btn-outline-danger btn-sm remove-sorting-item">حذف</button>
+                            }
+                        </td>
                     </tr>
                 }
                 </tbody>
             </table>
         </div>
+        @if (perms.GetValueOrDefault("ProductType") && perms.GetValueOrDefault("Grade") && perms.GetValueOrDefault("BasketCount") && !lockAll)
+        {
+            <div class="d-flex justify-content-start my-2">
+                <button type="button" id="addSortingItem" class="btn btn-outline-success btn-sm">➕ افزودن ردیف رقم/درجه</button>
+            </div>
+        }
+        <template id="sortingItemTemplate">
+            <tr>
+                <td>
+                    <input type="hidden" name="Items[__index__].Id" value="0" />
+                    <select name="Items[__index__].VarietyId" class="form-select" required>
+                        <option value="">-- انتخاب محصول - رقم --</option>
+                        @foreach (var variety in (IEnumerable<Microsoft.AspNetCore.Mvc.Rendering.SelectListItem>)ViewBag.VarietyList)
+                        {
+                            <option value="@variety.Value">@variety.Text</option>
+                        }
+                    </select>
+                </td>
+                <td>
+                    <select name="Items[__index__].Grade" class="form-select" required>
+                        <option value="">-- انتخاب درجه --</option>
+                        <option value="درجه یک">درجه یک</option><option value="درجه دو">درجه دو</option>
+                        <option value="درهم">درهم</option><option value="ضایعات">ضایعات</option>
+                    </select>
+                </td>
+                <td><input name="Items[__index__].BasketCount" type="number" min="1" value="1" class="form-control" required /></td>
+                <td><span class="text-muted">بدون قبض</span> <button type="button" class="btn btn-outline-danger btn-sm remove-sorting-item">حذف</button></td>
+            </tr>
+        </template>
         <small class="text-muted">حذف ردیفی که قبض باسکول دارد در سرور مسدود است تا سوابق وزن از بین نرود.</small>
 
                 <div class="section-title">🚛 حمل و مقصد</div>
@@ -350,4 +385,28 @@
         sale.addEventListener('change', sync);
         sync();
     })();
+</script>
+
+<script>
+(function () {
+    const template = document.getElementById('sortingItemTemplate');
+    const body = template?.parentElement?.querySelector('table tbody') || document.querySelector('.table tbody');
+    const add = document.getElementById('addSortingItem');
+    if (!body || !template) return;
+    let nextIndex = body.querySelectorAll('tr').length;
+    function renumber() {
+        body.querySelectorAll('tr').forEach((row, index) => row.querySelectorAll('[name]').forEach(input => {
+            input.name = input.name.replace(/Items\\[\\d+\\]/, 'Items[' + index + ']');
+        }));
+        nextIndex = body.querySelectorAll('tr').length;
+    }
+    add?.addEventListener('click', () => body.insertAdjacentHTML('beforeend', template.innerHTML.replaceAll('__index__', String(nextIndex++))));
+    body.addEventListener('click', event => {
+        const button = event.target.closest('.remove-sorting-item');
+        if (!button) return;
+        if (body.querySelectorAll('tr').length <= 1) { alert('حداقل یک ردیف باید باقی بماند.'); return; }
+        button.closest('tr').remove();
+        renumber();
+    });
+})();
 </script>
