@@ -268,42 +268,103 @@ namespace FruitBilling.Web.Controllers
         public async Task<IActionResult> Edit(int id, SortingExitPermit model, int? page, int? focusId)
         {
             if (id != model.Id) return BadRequest();
-            var permit = await _db.SortingExitPermits.FindAsync(id);
+            var permit = await _db.SortingExitPermits
+                .Include(p => p.Items).ThenInclude(x => x.BasculTickets)
+                .FirstOrDefaultAsync(p => p.Id == id);
             if (permit == null) return NotFound();
 
             var userId = _userManager.GetUserId(User);
             if (string.IsNullOrEmpty(userId)) return Unauthorized();
-
             if ((permit.Status == "تأیید فروش" || permit.Status == "تأیید شده توسط فروش") && !User.IsInRole("Manager"))
             {
                 TempData["Warning"] = "این برگه تأیید شده است و فقط مدیر می‌تواند آن را تغییر دهد.";
-                return RedirectToAction(nameof(Index), new { cycleId = permit.HarvestCycleId ?? 0, page = page, focusId = id });
+                return RedirectToAction(nameof(Index), new { cycleId = permit.HarvestCycleId ?? 0, page, focusId = id });
             }
 
             var perms = await _permissionService.GetEditableFieldsAsync(userId!, "SortingExitPermits", permit);
+            if (model.Items != null)
+            {
+                var submitted = model.Items.Where(x => x.Id > 0 || x.VarietyId > 0 || x.BasketCount > 0 || !string.IsNullOrWhiteSpace(x.Grade)).ToList();
+                if (submitted.Count == 0)
+                    ModelState.AddModelError("Items", "حداقل یک ردیف رقم و درجه باید باقی بماند.");
+                if (submitted.GroupBy(x => x.Id).Any(g => g.Key > 0 && g.Count() > 1))
+                    ModelState.AddModelError("Items", "شناسه ردیف تکراری است.");
+                if (submitted.Any(x => x.VarietyId <= 0 || x.BasketCount <= 0 || string.IsNullOrWhiteSpace(x.Grade)))
+                    ModelState.AddModelError("Items", "برای هر ردیف، رقم، درجه و تعداد سبد معتبر وارد کنید.");
+
+                var cycleIdForItems = User.IsInRole("Manager") && model.HarvestCycleId.HasValue
+                    ? model.HarvestCycleId.Value : permit.HarvestCycleId ?? 0;
+                var cycle = cycleIdForItems > 0
+                    ? await _db.HarvestCycles.Include(x => x.HarvestCycleCategories).FirstOrDefaultAsync(x => x.Id == cycleIdForItems)
+                    : null;
+                var categoryIds = cycle?.HarvestCycleCategories.Select(x => x.CategoryId).ToArray() ?? Array.Empty<int>();
+                if (categoryIds.Length == 0 && cycle?.CategoryId is int legacyCategoryId)
+                    categoryIds = new[] { legacyCategoryId };
+                var varietyIds = submitted.Select(x => x.VarietyId).Where(x => x > 0).Distinct().ToArray();
+                var varieties = await _db.ProductVarieties.Include(v => v.Product)
+                    .Where(v => varietyIds.Contains(v.Id)).ToListAsync();
+                if (varieties.Count != varietyIds.Length || varieties.Any(v => v.Product == null ||
+                    (categoryIds.Length > 0 && !categoryIds.Contains(v.Product.CategoryId ?? 0))))
+                    ModelState.AddModelError("Items", "یکی از ارقام انتخاب‌شده متعلق به گونه‌های این دوره برداشت نیست.");
+
+                var submittedIds = submitted.Where(x => x.Id > 0).Select(x => x.Id).ToHashSet();
+                if (submittedIds.Any(x => permit.Items.All(dbItem => dbItem.Id != x)))
+                    ModelState.AddModelError("Items", "یک ردیف ارسالی متعلق به این برگ خروج نیست.");
+                foreach (var removed in permit.Items.Where(x => !submittedIds.Contains(x.Id)))
+                    if (removed.BasculTickets.Any())
+                        ModelState.AddModelError("Items", $"ردیف «{removed.Grade}» قبض باسکول دارد و حذف آن مجاز نیست.");
+
+                if (!ModelState.IsValid)
+                {
+                    await LoadCyclesAsync(permit.HarvestCycleId, includeNone: false);
+                    await LoadVarietiesForCycleAsync(cycleIdForItems);
+                    ViewBag.ReturnPage = page;
+                    ViewBag.ReturnCycleId = permit.HarvestCycleId ?? 0;
+                    ViewBag.ReturnFocusId = focusId ?? id;
+                    return View(model);
+                }
+
+                foreach (var removed in permit.Items.Where(x => !submittedIds.Contains(x.Id)).ToList())
+                    _db.SortingExitPermitItems.Remove(removed);
+                foreach (var posted in submitted)
+                {
+                    var item = posted.Id == 0 ? new SortingExitPermitItem() : permit.Items.First(x => x.Id == posted.Id);
+                    if (posted.Id == 0)
+                    {
+                        item.SortingExitPermitId = permit.Id;
+                        permit.Items.Add(item);
+                    }
+                    if (perms.GetValueOrDefault("ProductType")) item.VarietyId = posted.VarietyId;
+                    if (perms.GetValueOrDefault("Grade")) item.Grade = posted.Grade.Trim();
+                    if (perms.GetValueOrDefault("BasketCount")) item.BasketCount = posted.BasketCount;
+                }
+                if (permit.Items.Count > 0)
+                {
+                    var first = permit.Items.OrderBy(x => x.Id).First();
+                    var firstVariety = varieties.FirstOrDefault(v => v.Id == first.VarietyId)
+                        ?? await _db.ProductVarieties.Include(v => v.Product).FirstAsync(v => v.Id == first.VarietyId);
+                    permit.VarietyId = first.VarietyId;
+                    permit.ProductId = firstVariety.ProductId;
+                    permit.ProductType = firstVariety.Product?.Name;
+                    permit.Grade = first.Grade;
+                    permit.BasketCount = permit.Items.Sum(x => x.BasketCount);
+                }
+            }
 
             if (perms.GetValueOrDefault("PermitNumber")) permit.PermitNumber = model.PermitNumber;
             if (perms.GetValueOrDefault("Date")) permit.Date = model.Date;
-            if (perms.GetValueOrDefault("BasketCount")) permit.BasketCount = model.BasketCount;
-            if (perms.GetValueOrDefault("ProductType")) permit.ProductType = model.ProductType;
-            if (perms.GetValueOrDefault("Grade")) permit.Grade = model.Grade;
             if (perms.GetValueOrDefault("FarmName")) permit.FarmName = model.FarmName;
             if (perms.GetValueOrDefault("VehiclePlate")) permit.VehiclePlate = model.VehiclePlate;
             if (perms.GetValueOrDefault("Destination")) permit.Destination = model.Destination;
             if (perms.GetValueOrDefault("SaleType")) permit.SaleType = model.SaleType;
-
-            // نوع خروج باید با نوع فروش سازگار باشد (در صورت تغییر نوع فروش، خودکار اصلاح می‌شود)
-            permit.MovementType = SortingMovement.Resolve(
-                permit.SaleType,
+            permit.MovementType = SortingMovement.Resolve(permit.SaleType,
                 perms.GetValueOrDefault("MovementType") ? model.MovementType : permit.MovementType);
             if (SortingMovement.CanonicalSaleType(permit.SaleType) == SortingMovement.Transfer && permit.MovementType == null)
-                TempData["Warning"] = "برای «جابجایی» نوع خروج انتخاب نشده است؛ لطفاً برگه را ویرایش و نوع خروج را مشخص کنید.";
-
+                ModelState.AddModelError(nameof(model.MovementType), "برای «جابجایی» نوع خروج را انتخاب کنید.");
             if (perms.GetValueOrDefault("Source")) permit.Source = model.Source;
             if (perms.GetValueOrDefault("SortingContractor")) permit.SortingContractor = model.SortingContractor;
             if (perms.GetValueOrDefault("Description")) permit.Description = model.Description;
 
-            // 🆕 تغییر دوره: فقط مدیر و فقط به یک دوره موجود
             bool cycleChanged = false;
             if (User.IsInRole("Manager") && model.HarvestCycleId.HasValue && model.HarvestCycleId != permit.HarvestCycleId)
             {
@@ -312,11 +373,20 @@ namespace FruitBilling.Web.Controllers
                     permit.HarvestCycleId = model.HarvestCycleId;
                     cycleChanged = true;
                 }
+                else ModelState.AddModelError(nameof(model.HarvestCycleId), "دوره برداشت انتخاب‌شده معتبر نیست.");
+            }
+            if (!ModelState.IsValid)
+            {
+                await LoadCyclesAsync(permit.HarvestCycleId, includeNone: false);
+                await LoadVarietiesForCycleAsync(permit.HarvestCycleId ?? 0);
+                ViewBag.ReturnPage = page;
+                ViewBag.ReturnCycleId = permit.HarvestCycleId ?? 0;
+                ViewBag.ReturnFocusId = focusId ?? id;
+                return View(model);
             }
 
             await _db.SaveChangesAsync();
             TempData["Msg"] = "تغییرات مجاز ذخیره شد.";
-            // اگر دوره عوض شد، صفحه قبلی در دوره جدید معنی ندارد
             return RedirectToAction(nameof(Index), new
             {
                 cycleId = permit.HarvestCycleId ?? 0,
