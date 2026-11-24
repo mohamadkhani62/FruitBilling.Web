@@ -48,7 +48,10 @@ namespace FruitBilling.Web.Controllers
                 : null;
 
             var query = FilterByCycle(
-                    _db.SortingExitPermits.AsNoTracking().Include(p => p.BasculTickets), cid)
+                    _db.SortingExitPermits.AsNoTracking()
+                        .Include(p => p.BasculTickets)
+                        .Include(p => p.Items).ThenInclude(x => x.Variety).ThenInclude(v => v.Product)
+                        .Include(p => p.Items).ThenInclude(x => x.BasculTickets), cid)
                 .OrderBy(p => p.Date)
                 .ThenBy(p => p.Id)
                 .AsQueryable();
@@ -243,6 +246,8 @@ namespace FruitBilling.Web.Controllers
         {
             var permit = await _db.SortingExitPermits
                 .Include(p => p.BasculTickets)
+                .Include(p => p.Items).ThenInclude(x => x.Variety).ThenInclude(v => v.Product)
+                .Include(p => p.Items).ThenInclude(x => x.BasculTickets)
                 .Include(p => p.HarvestCycle)
                 .FirstOrDefaultAsync(p => p.Id == id);
 
