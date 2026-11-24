@@ -79,7 +79,10 @@ namespace FruitBilling.Web.Models
         [Display(Name = "تاریخ ثبت سیستمی")]
         public DateTime CreatedAt { get; set; } = DateTime.Now;
 
-        // ارتباط یک به چند با قبض‌های باسکول
+        // ردیف‌های محصول/رقم در این برگ
+        public List<FruitExitPermitItem> Items { get; set; } = new();
+
+        // ارتباط قدیمی قبض‌ها برای سازگاری تا زمان مهاجرت کامل کنترلرها
         public List<BasculTicket> BasculTickets { get; set; } = new();
     }
 }
