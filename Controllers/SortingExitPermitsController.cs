@@ -292,6 +292,133 @@ namespace FruitBilling.Web.Controllers
             return View(report);
         }
 
+        // دانلود اکسل گزارش تطبیق؛ خروجی فقط خواندنی است.
+        [HttpGet]
+        public async Task<IActionResult> ExportReconciliation(int? cycleId)
+        {
+            var actionResult = await Reconciliation(cycleId);
+            if (actionResult is not ViewResult viewResult ||
+                viewResult.Model is not PermitReconciliationViewModel report)
+                return BadRequest("امکان تهیه گزارش تطبیق وجود ندارد.");
+
+            using var workbook = new XLWorkbook();
+            var ws = workbook.Worksheets.Add("گزارش تطبیق");
+            var headers = new[]
+            {
+                "وضعیت", "شماره قبض", "تاریخ", "پلاک", "محصول", "رقم",
+                "شماره برگ خروج مزرعه", "شماره برگ خروج سورتینگ",
+                "تعداد سبد مزرعه", "تعداد سبد سورتینگ",
+                "وزن خالی مزرعه", "وزن خالی سورتینگ",
+                "وزن پر مزرعه", "وزن پر سورتینگ", "شرح مغایرت / نتیجه"
+            };
+
+            ws.Cell(1, 1).Value = "گزارش تطبیق خروج مزرعه و سورتینگ";
+            ws.Range(1, 1, 1, headers.Length).Merge();
+            ws.Cell(1, 1).Style.Font.Bold = true;
+            ws.Cell(1, 1).Style.Font.FontSize = 16;
+            ws.Cell(1, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            ws.Cell(2, 1).Value = "دوره برداشت";
+            ws.Cell(2, 2).Value = report.HarvestCycleName ?? "بدون دوره";
+            ws.Cell(3, 1).Value = "تاریخ تهیه گزارش";
+            ws.Cell(3, 2).Value = DateTime.Now.ToString("yyyy/MM/dd HH:mm");
+
+            var headerRow = 5;
+            for (var col = 0; col < headers.Length; col++)
+                ws.Cell(headerRow, col + 1).Value = headers[col];
+
+            var headerRange = ws.Range(headerRow, 1, headerRow, headers.Length);
+            headerRange.Style.Font.Bold = true;
+            headerRange.Style.Fill.BackgroundColor = XLColor.LightGray;
+            headerRange.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            headerRange.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+            headerRange.Style.Alignment.WrapText = true;
+
+            void SetNullableNumber(IXLCell cell, int? value)
+            {
+                if (value.HasValue) cell.Value = value.Value;
+            }
+
+            var currentRow = headerRow + 1;
+            foreach (var item in report.Rows)
+            {
+                var values = new[]
+                {
+                    item.Status, item.TicketNo, item.Date, item.VehiclePlate,
+                    item.ProductName, item.VarietyName, item.FarmPermitNumber,
+                    item.SortingPermitNumber
+                };
+                for (var col = 0; col < values.Length; col++)
+                    ws.Cell(currentRow, col + 1).Value = values[col];
+
+                SetNullableNumber(ws.Cell(currentRow, 9), item.FarmBasketCount);
+                SetNullableNumber(ws.Cell(currentRow, 10), item.SortingBasketCount);
+                SetNullableNumber(ws.Cell(currentRow, 11), item.FarmEmptyWeight);
+                SetNullableNumber(ws.Cell(currentRow, 12), item.SortingEmptyWeight);
+                SetNullableNumber(ws.Cell(currentRow, 13), item.FarmGrossWeight);
+                SetNullableNumber(ws.Cell(currentRow, 14), item.SortingGrossWeight);
+                ws.Cell(currentRow, 15).Value = item.Details;
+
+                var rowRange = ws.Range(currentRow, 1, currentRow, headers.Length);
+                if (item.Status == "تطبیق کامل")
+                    rowRange.Style.Fill.BackgroundColor = XLColor.LightGreen;
+                else if (item.Status == "مغایرت اطلاعات" || item.Status == "فاقد طرف مقابل")
+                    rowRange.Style.Fill.BackgroundColor = XLColor.LightPink;
+                else
+                    rowRange.Style.Fill.BackgroundColor = XLColor.LightYellow;
+
+                currentRow++;
+            }
+
+            var dataEndRow = Math.Max(headerRow, currentRow - 1);
+            var tableRange = ws.Range(headerRow, 1, dataEndRow, headers.Length);
+            tableRange.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+            tableRange.Style.Alignment.WrapText = true;
+            tableRange.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+            tableRange.Style.Border.InsideBorder = XLBorderStyleValues.Hair;
+
+            ws.SheetView.FreezeRows(headerRow);
+            ws.Range(headerRow, 1, dataEndRow, headers.Length).SetAutoFilter();
+            ws.Column(1).Width = 20;
+            ws.Column(2).Width = 16;
+            ws.Column(3).Width = 16;
+            ws.Column(4).Width = 18;
+            ws.Column(5).Width = 18;
+            ws.Column(6).Width = 18;
+            ws.Column(7).Width = 22;
+            ws.Column(8).Width = 24;
+            ws.Columns(9, 14).Width = 18;
+            ws.Column(15).Width = 55;
+            ws.Row(1).Height = 28;
+            ws.Row(headerRow).Height = 34;
+
+            var summary = workbook.Worksheets.Add("خلاصه");
+            summary.Cell(1, 1).Value = "خلاصه گزارش تطبیق";
+            summary.Cell(1, 1).Style.Font.Bold = true;
+            summary.Cell(1, 1).Style.Font.FontSize = 15;
+            summary.Cell(2, 1).Value = "دوره برداشت";
+            summary.Cell(2, 2).Value = report.HarvestCycleName ?? "بدون دوره";
+            summary.Cell(3, 1).Value = "تطبیق کامل";
+            summary.Cell(3, 2).Value = report.MatchedCount;
+            summary.Cell(4, 1).Value = "مغایرت اطلاعات";
+            summary.Cell(4, 2).Value = report.MismatchCount;
+            summary.Cell(5, 1).Value = "فاقد طرف مقابل";
+            summary.Cell(5, 2).Value = report.MissingCount;
+            summary.Cell(6, 1).Value = "تطبیق مبهم";
+            summary.Cell(6, 2).Value = report.AmbiguousCount;
+            summary.Cell(7, 1).Value = "اطلاعات ناکافی";
+            summary.Cell(7, 2).Value = report.IncompleteCount;
+            summary.Cell(8, 1).Value = "تعداد کل ردیف‌ها";
+            summary.Cell(8, 2).Value = report.Rows.Count;
+            summary.Columns(1, 2).AdjustToContents();
+            summary.Range(1, 1, 8, 2).Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+
+            using var stream = new MemoryStream();
+            workbook.SaveAs(stream);
+            var fileName = $"Reconciliation_{DateTime.Now:yyyyMMdd_HHmm}.xlsx";
+            return File(stream.ToArray(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+        }
+
         // ==========================================
         // ۲. ایجاد (Create)
         // ==========================================
