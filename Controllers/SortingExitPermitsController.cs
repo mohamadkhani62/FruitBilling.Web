@@ -823,7 +823,7 @@ namespace FruitBilling.Web.Controllers
             void WriteSheet(string title, List<SortingExitPermit> records)
             {
                 var ws = wb.AddWorksheet(SafeSheetName(title, usedNames));
-                string[] headers = { "ردیف", "شماره مجوز تحویل", "تاریخ", "مزرعه", "محصول", "رقم", "درجه", "تعداد سبد ردیف", "مقصد", "نوع فروش", "مبدا", "پیمانکار سورت", "پلاک", "شماره قبض", "تعداد سبد قبض", "وزن خالی (kg)", "وزن پر (kg)", "وزن خالص (kg)", "نوع خروج", "توضیحات" };
+                string[] headers = ImportHeaders;
                 for (int c = 0; c < headers.Length; c++) ws.Cell(1, c + 1).Value = headers[c];
                 int row = 2, sequence = 1;
                 void WriteRow(SortingExitPermit p, SortingExitPermitItem? item, SortingBasculTicket? ticket)
@@ -945,7 +945,7 @@ namespace FruitBilling.Web.Controllers
 
         // ==========================================
         // 📤 پردازش فایل اکسل یکپارچه (POST)
-        //  - فقط .xlsx با ساختار مشخص (۱۶ ستون A تا P با سربرگ دقیق)
+        //  - قالب جدید ۲۰ ستونی همسان با خروجی و قالب قدیمی ۱۶ ستونی برای سازگاری
         //  - نام هر تب باید با نام یک دوره برداشت یکی باشد
         //  - هر تبِ معتبر در دوره‌ی خودش ثبت می‌شود؛ تبِ نامعتبر کلاً ثبت نمی‌شود
         // ==========================================
