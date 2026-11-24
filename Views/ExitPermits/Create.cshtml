@@ -110,7 +110,7 @@
             <div class="col-md-4 mb-3">
                 <label class="form-label">مزرعه *</label>
                 <input name="farmNameInput" class="form-control @(canEditProduct ? "" : "readonly-field")"
-                       list="farmList" placeholder="انتخاب یا تایپ نام مزرعه..." readonly="@(!canEditProduct)" required />
+                       list="farmList" placeholder="انتخاب یا تایپ نام مزرعه..." value="@ViewBag.FarmNameInput" readonly="@(!canEditProduct)" required />
                 <datalist id="farmList">
                     @if (ViewBag.Farms != null)
                     {
@@ -124,7 +124,7 @@
             <div class="col-md-4 mb-3">
                 <label class="form-label">قطعه *</label>
                 <input name="plotNameInput" class="form-control @(canEditProduct ? "" : "readonly-field")"
-                       list="plotList" placeholder="انتخاب یا تایپ نام قطعه..." readonly="@(!canEditProduct)" required />
+                       list="plotList" placeholder="انتخاب یا تایپ نام قطعه..." value="@ViewBag.PlotNameInput" readonly="@(!canEditProduct)" required />
                 <datalist id="plotList">
                     @if (ViewBag.Plots != null)
                     {
