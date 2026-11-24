@@ -613,6 +613,11 @@ namespace FruitBilling.Web.Controllers
             model.Items ??= new List<SortingExitPermitItem>();
             var submittedItems = model.Items.ToList();
             var validItemIds = permit.Items.Select(x => x.Id).ToHashSet();
+            if (validItemIds.Count == 0)
+            {
+                TempData["Warning"] = "این برگ سورتینگ ردیف رقم/درجه ندارد و قابل توزین نیست.";
+                return RedirectToAction(nameof(Weigh), new { id });
+            }
             if (submittedItems.GroupBy(x => x.Id).Any(g => g.Count() > 1) ||
                 submittedItems.Any(x => !validItemIds.Contains(x.Id)) ||
                 !submittedItems.Select(x => x.Id).ToHashSet().SetEquals(validItemIds))
