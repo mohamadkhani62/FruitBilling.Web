@@ -1526,11 +1526,45 @@ namespace FruitBilling.Web.Controllers
 
             ViewBag.Report = reports;
             ViewBag.IsImportPreview = previewOnly;
+            ViewData["ReportController"] = "SortingExitPermits";
+
+            if (head.Length > 0 && reports.Any(r => r.HasErrors || r.Notes.Count > 0))
+            {
+                try
+                {
+                    using var annotatedWorkbook = new XLWorkbook(new MemoryStream(head));
+                    var annotatedBytes = BuildAnnotatedWorkbook(annotatedWorkbook, reports);
+                    var token = Guid.NewGuid().ToString("N");
+                    _memoryCache.Set("SortingExitImport:" + token, annotatedBytes, TimeSpan.FromMinutes(20));
+                    ViewBag.AnnotatedWorkbookToken = token;
+                }
+                catch (Exception)
+                {
+                    ModelState.AddModelError("", "ساخت نسخه علامت‌گذاری‌شده فایل ممکن نشد؛ گزارش خطاها در همین صفحه در دسترس است.");
+                }
+            }
 
             if (!reports.Any(r => !r.HasErrors && (r.Permits > 0 || r.Duplicates > 0)))
                 ModelState.AddModelError("", "هیچ تبی ثبت نشد. جزئیات هر تب را در گزارش زیر ببینید.");
 
             return View();
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> DownloadAnnotatedImport(string token)
+        {
+            var userId = _userManager.GetUserId(User);
+            if (string.IsNullOrEmpty(userId)) return Unauthorized();
+            if (!await _permissionService.CanUserImportAsync(userId, "SortingExitPermits"))
+                return Forbid();
+            if (string.IsNullOrWhiteSpace(token) || token.Length != 32)
+                return BadRequest();
+
+            if (!_memoryCache.TryGetValue("SortingExitImport:" + token, out byte[]? bytes) || bytes == null)
+                return NotFound("نسخه علامت‌گذاری‌شده منقضی شده است؛ فایل را دوباره بررسی کنید.");
+
+            return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "SortingExitPermits_Annotated.xlsx");
         }
 
         // ==========================================
