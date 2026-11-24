@@ -19,7 +19,7 @@ namespace FruitBilling.Web.Services
         public Dictionary<int, List<string>> RowNotes { get; } = new();
         public bool HasErrors => Errors.Count > 0 || HiddenErrorCount > 0;
 
-        private static IEnumerable<int> ExtractRowNumbers(string message)
+        public static IEnumerable<int> ExtractRowNumbers(string message)
         {
             var matches = System.Text.RegularExpressions.Regex.Matches(
                 message ?? "", @"ردیف(?:‌های|های)?\s*([0-9۰-۹]+(?:\s*[،,و]\s*[0-9۰-۹]+)*)");
@@ -283,7 +283,7 @@ namespace FruitBilling.Web.Services
             {
                 foreach (var error in report.Errors)
                 {
-                    var rowNumber = ExtractRowNumbers(error).FirstOrDefault();
+                    var rowNumber = SheetImportReport.ExtractRowNumbers(error).FirstOrDefault();
                     summary.Cell(targetRow, 1).Value = report.SheetName;
                     summary.Cell(targetRow, 2).Value = rowNumber == 0 ? "—" : rowNumber.ToString();
                     summary.Cell(targetRow, 3).Value = "خطا";
@@ -293,7 +293,7 @@ namespace FruitBilling.Web.Services
                 }
                 foreach (var note in report.Notes)
                 {
-                    var rowNumber = ExtractRowNumbers(note).FirstOrDefault();
+                    var rowNumber = SheetImportReport.ExtractRowNumbers(note).FirstOrDefault();
                     summary.Cell(targetRow, 1).Value = report.SheetName;
                     summary.Cell(targetRow, 2).Value = rowNumber == 0 ? "—" : rowNumber.ToString();
                     summary.Cell(targetRow, 3).Value = "هشدار";
