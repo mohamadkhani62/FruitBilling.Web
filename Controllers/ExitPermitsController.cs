@@ -380,7 +380,6 @@ namespace FruitBilling.Web.Controllers
                 .FirstOrDefaultAsync(p => p.Id == id);
 
             if (permit == null) return NotFound();
-            model.Items ??= new List<FruitExitPermitItem>();
 
             var userId = _userManager.GetUserId(User);
             if (string.IsNullOrEmpty(userId) || !await CanManageBasculTicketsAsync(userId!, permit))
@@ -389,50 +388,92 @@ namespace FruitBilling.Web.Controllers
                 return RedirectToAction(nameof(Index), new { cycleId = cycleId ?? permit.HarvestCycleId, focusId = id });
             }
 
-            int totalNetWeight = 0;
+            model.Items ??= new List<FruitExitPermitItem>();
+            var submittedItems = model.Items.ToList();
+            var validItemIds = permit.Items.Select(x => x.Id).ToHashSet();
+
+            if (submittedItems.GroupBy(x => x.Id).Any(g => g.Count() > 1) ||
+                submittedItems.Any(x => !validItemIds.Contains(x.Id)) ||
+                submittedItems.Select(x => x.Id).ToHashSet().SetEquals(validItemIds) == false)
+            {
+                TempData["Warning"] = "ردیف‌های ارسالی با ردیف‌های همین برگ خروج مطابقت ندارند. هیچ تغییری ذخیره نشد.";
+                return RedirectToAction(nameof(Weigh), new { id, cycleId });
+            }
+
+            var ticketIdsSeen = new HashSet<int>();
+            var prepared = new List<(FruitExitPermitItem Item, List<BasculTicket> Tickets)>();
             foreach (var item in permit.Items)
             {
-                var submittedItem = model.Items.FirstOrDefault(x => x.Id == item.Id);
-                var tickets = submittedItem?.BasculTickets ?? new List<BasculTicket>();
-                tickets = tickets.Where(t => !string.IsNullOrWhiteSpace(t.TicketNo) || t.GrossWeight > 0).ToList();
+                var submittedItem = submittedItems.Single(x => x.Id == item.Id);
+                var tickets = (submittedItem.BasculTickets ?? new List<BasculTicket>())
+                    .Where(t => !string.IsNullOrWhiteSpace(t.TicketNo) || t.GrossWeight > 0 ||
+                                t.EmptyWeight > 0 || (t.BasketCount ?? 0) > 0)
+                    .ToList();
 
-                if (tickets.Count == 0)
+                var existingTicketIds = item.BasculTickets.Select(t => t.Id).ToHashSet();
+                if (tickets.Any(t => t.Id > 0 && (!existingTicketIds.Contains(t.Id) || !ticketIdsSeen.Add(t.Id))))
                 {
-                    TempData["Warning"] = $"برای رقم {item.Variety?.Name} حداقل یک قبض باسکول ثبت کنید.";
+                    TempData["Warning"] = "یکی از قبض‌ها متعلق به این ردیف نیست یا شناسه آن تکراری است. هیچ تغییری ذخیره نشد.";
                     return RedirectToAction(nameof(Weigh), new { id, cycleId });
                 }
 
-                if (tickets.Count == 1)
-                    tickets[0].BasketCount = item.BasketCount;
-
-                if (tickets.Any(t => t.GrossWeight <= t.EmptyWeight || t.EmptyWeight < 0 || t.BasketCount <= 0) ||
+                if (tickets.Count == 1) tickets[0].BasketCount = item.BasketCount;
+                if (tickets.Count == 0 ||
+                    tickets.Any(t => string.IsNullOrWhiteSpace(t.TicketNo) || t.GrossWeight <= t.EmptyWeight ||
+                                     t.EmptyWeight < 0 || (t.BasketCount ?? 0) <= 0) ||
                     tickets.Sum(t => t.BasketCount ?? 0) != item.BasketCount)
                 {
-                    TempData["Warning"] = $"مجموع تعداد سبد قبض‌های رقم {item.Variety?.Name} باید دقیقاً برابر {item.BasketCount} باشد و وزن‌ها معتبر باشند.";
+                    TempData["Warning"] = $"برای رقم {item.Variety?.Name} قبض معتبر ثبت کنید؛ مجموع سبد قبض‌ها باید دقیقاً {item.BasketCount} باشد و وزن پر از وزن خالی بیشتر باشد. هیچ تغییری ذخیره نشد.";
                     return RedirectToAction(nameof(Weigh), new { id, cycleId });
                 }
+                prepared.Add((item, tickets));
+            }
 
-                _db.BasculTickets.RemoveRange(item.BasculTickets);
-                foreach (var ticket in tickets)
+            var totalNetWeight = 0;
+            foreach (var entry in prepared)
+            {
+                var item = entry.Item;
+                var tickets = entry.Tickets;
+                var retainedIds = tickets.Where(t => t.Id > 0).Select(t => t.Id).ToHashSet();
+
+                _db.BasculTickets.RemoveRange(item.BasculTickets.Where(t => !retainedIds.Contains(t.Id)));
+
+                foreach (var posted in tickets)
                 {
-                    ticket.Id = 0;
+                    BasculTicket ticket;
+                    if (posted.Id > 0)
+                    {
+                        ticket = item.BasculTickets.Single(t => t.Id == posted.Id);
+                    }
+                    else
+                    {
+                        ticket = new BasculTicket
+                        {
+                            FruitExitPermitId = permit.Id,
+                            FruitExitPermitItemId = item.Id,
+                            CreatedAt = DateTime.Now
+                        };
+                        _db.BasculTickets.Add(ticket);
+                    }
+
                     ticket.FruitExitPermitId = permit.Id;
                     ticket.FruitExitPermitItemId = item.Id;
-                    ticket.BasketCount = ticket.BasketCount;
-                    ticket.NetWeight = ticket.GrossWeight - ticket.EmptyWeight;
+                    ticket.TicketNo = posted.TicketNo!.Trim();
+                    ticket.BasketCount = posted.BasketCount;
+                    ticket.EmptyWeight = posted.EmptyWeight;
+                    ticket.GrossWeight = posted.GrossWeight;
+                    ticket.NetWeight = posted.GrossWeight - posted.EmptyWeight;
                     totalNetWeight += ticket.NetWeight;
-                    _db.BasculTickets.Add(ticket);
                 }
             }
 
             permit.Status = "توزین شده";
             await _db.SaveChangesAsync();
             TempData["Msg"] = $"توزین ثبت شد. مجموع وزن خالص: {totalNetWeight:N0} کیلوگرم.";
-
             return RedirectToAction(nameof(Index), new { cycleId = cycleId ?? permit.HarvestCycleId, focusId = permit.Id });
         }
 
-        // ==========================================
+                // ==========================================
         // ۵. حذف (Delete)
         // ==========================================
         [HttpPost, ValidateAntiForgeryToken]
