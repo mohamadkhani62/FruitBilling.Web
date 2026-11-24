@@ -146,76 +146,34 @@ else
             }
             @foreach (var item in Model)
             {
-                var totalNet = item.BasculTickets?.Sum(t => t.NetWeight) ?? 0;
-                var ticketNos = item.BasculTickets != null && item.BasculTickets.Any()
-                    ? string.Join(" | ", item.BasculTickets.Select(t => t.TicketNo)) : "";
-
-                <tr id="record-@item.Id" class="@(item.Id == focusId ? "focus-row" : "")">
-                    <td>@row</td>
-                    <td>@item.Date</td>
-                    <td><b>@item.PermitNumber</b></td>
-                    <td>
-                        @if (!string.IsNullOrEmpty(ticketNos))
-                        {
-                            <span>@ticketNos</span>
-                        }
-                        else
-                        {
-                            <a asp-action="Weigh" asp-route-id="@item.Id" asp-route-cycleId="@selectedCycleId" class="icon-ticket" title="ثبت توزین">⏳</a>
-                        }
-                    </td>
-                    <td>@item.Farm?.Name</td>
-                    <td>@item.Plot?.Name</td>
-                    <td>@(item.Product?.Name ?? item.ProductType) @(item.Variety != null ? $"- {item.Variety.Name}" : "")</td>
-                    <td>@item.DriverName</td>
-                    <td>@item.VehiclePlate</td>
-                    <td>@item.ContractorName</td>
-                    <td>@item.Destination</td>
-                    <td style="white-space: nowrap;">
-                        @if (item.Status == "در انتظار توزین")
-                        {
-                            <a asp-action="Weigh" asp-route-id="@item.Id" asp-route-cycleId="@selectedCycleId" class="btn btn-warning btn-sm">⚖️ ثبت توزین</a>
-                        }
-                        else
-                        {
-                            <span>@(totalNet > 0 ? totalNet.ToString("N0") : "-")</span>
-                        }
-                    </td>
-                    <td>
-                        @if (item.Status == "در انتظار توزین")
-                        {
-                            <span class="badge-pending">در انتظار توزین</span>
-                        }
-                        else if (item.Status == "توزین شده")
-                        {
-
-                            <span class="badge-done">توزین شده</span>
-                        }
-                        else
-                        {
-
-                            <span class="badge bg-primary text-white">تأیید شده در مقصد</span>
-                        }
-                    </td>
-                    <td style="white-space: nowrap;">
-                        @if (canApprove && item.Status == "توزین شده")
-                        {
-                            <form asp-action="ConfirmArrival" asp-route-id="@item.Id" method="post" style="display:inline" onsubmit="return confirm('آیا رسیدن بار به مقصد را تأیید می‌کنید؟')">
-                                @Html.AntiForgeryToken()
-                                <input type="hidden" name="cycleId" value="@selectedCycleId" />
-                                <button type="submit" class="btn btn-success btn-sm">✅ تأیید</button>
-                            </form>
-                        }
-                        <a asp-action="Print" asp-route-id="@item.Id" class="btn btn-info btn-sm" target="_blank">🖨️</a>
-                        <a asp-action="Edit" asp-route-id="@item.Id" asp-route-cycleId="@selectedCycleId" class="btn btn-primary btn-sm">✏️</a>
-                        <form asp-action="Delete" asp-route-id="@item.Id" method="post" style="display:inline" onsubmit="return confirm('حذف شود؟')">
-                            @Html.AntiForgeryToken()
-                            <input type="hidden" name="cycleId" value="@selectedCycleId" />
-                            <button type="submit" class="btn btn-danger btn-sm">🗑️</button>
-                        </form>
-                    </td>
-                </tr>
-                row++;
+                var details = item.Items?.Any() == true ? item.Items : new List<FruitBilling.Web.Models.FruitExitPermitItem>();
+                if (details.Count == 0)
+                {
+                    var totalNet = item.BasculTickets?.Sum(t => t.NetWeight) ?? 0;
+                    var ticketNos = item.BasculTickets != null ? string.Join(" | ", item.BasculTickets.Select(t => t.TicketNo)) : "";
+                    <tr id="record-@item.Id" class="@(item.Id == focusId ? "focus-row" : "")">
+                        <td>@row</td><td>@item.Date</td><td><b>@item.PermitNumber</b></td><td>@ticketNos</td>
+                        <td>@item.Farm?.Name</td><td>@item.Plot?.Name</td><td>@(item.Product?.Name ?? item.ProductType) @(item.Variety != null ? "- " + item.Variety.Name : "")</td>
+                        <td>@item.DriverName</td><td>@item.VehiclePlate</td><td>@item.ContractorName</td><td>@item.Destination</td><td>@(totalNet > 0 ? totalNet.ToString("N0") : "-")</td>
+                        <td>@item.Status</td><td style="white-space:nowrap;"><a asp-action="Print" asp-route-id="@item.Id" class="btn btn-info btn-sm" target="_blank">🖨️</a> <a asp-action="Edit" asp-route-id="@item.Id" asp-route-cycleId="@selectedCycleId" class="btn btn-primary btn-sm">✏️</a></td>
+                    </tr>
+                    row++;
+                }
+                else
+                {
+                    foreach (var detail in details)
+                    {
+                        var totalNet = detail.BasculTickets?.Sum(t => t.NetWeight) ?? 0;
+                        var ticketNos = detail.BasculTickets != null ? string.Join(" | ", detail.BasculTickets.Select(t => t.TicketNo)) : "";
+                        <tr class="@(item.Id == focusId ? "focus-row" : "")" style="background-color:@(row % 2 == 0 ? "#f5f9ff" : "#ffffff")">
+                            <td>@row</td><td>@item.Date</td><td><b>@item.PermitNumber</b></td><td>@ticketNos</td>
+                            <td>@item.Farm?.Name</td><td>@item.Plot?.Name</td><td>@(detail.Variety?.Product?.Name ?? "-") - @(detail.Variety?.Name ?? "-")</td>
+                            <td>@item.DriverName</td><td>@item.VehiclePlate</td><td>@item.ContractorName</td><td>@item.Destination</td><td>@(totalNet > 0 ? totalNet.ToString("N0") : "-")</td>
+                            <td>@item.Status</td><td style="white-space:nowrap;"><a asp-action="Weigh" asp-route-id="@item.Id" asp-route-cycleId="@selectedCycleId" class="btn btn-warning btn-sm">⚖️</a> <a asp-action="Print" asp-route-id="@item.Id" class="btn btn-info btn-sm" target="_blank">🖨️</a> <a asp-action="Edit" asp-route-id="@item.Id" asp-route-cycleId="@selectedCycleId" class="btn btn-primary btn-sm">✏️</a></td>
+                        </tr>
+                        row++;
+                    }
+                }
             }
         </tbody>
     </table>
