@@ -170,12 +170,42 @@
                         <td><input asp-for="Items[i].BasketCount" type="number" min="1" class="form-control" readonly="@(!canEditBasketCount)" /></td>
                         <td><input asp-for="Items[i].BasketType" class="form-control" readonly="@(!canEditBasketType)" /></td>
                         <td><input asp-for="Items[i].HarvestMethod" class="form-control" readonly="@(!canEditHarvest)" /></td>
-                        <td><span class="badge bg-secondary">@(Model.Items[i].BasculTickets?.Count ?? 0) قبض</span></td>
+                        <td>
+                            <span class="badge bg-secondary">@(Model.Items[i].BasculTickets?.Count ?? 0) قبض</span>
+                            @if (canEditProduct && canEditBasketCount && !lockAll && (Model.Items[i].BasculTickets?.Count ?? 0) == 0)
+                            {
+                                <button type="button" class="btn btn-outline-danger btn-sm remove-farm-item">حذف</button>
+                            }
+                        </td>
                     </tr>
                 }
                 </tbody>
             </table>
         </div>
+        @if (canEditProduct && canEditBasketCount && !lockAll)
+        {
+            <div class="d-flex justify-content-start my-2">
+                <button type="button" id="addFarmItem" class="btn btn-outline-success btn-sm">➕ افزودن ردیف رقم</button>
+            </div>
+        }
+        <template id="farmItemTemplate">
+            <tr>
+                <td>
+                    <input type="hidden" name="Items[__index__].Id" value="0" />
+                    <select name="Items[__index__].VarietyId" class="form-select" required>
+                        <option value="">-- انتخاب محصول - رقم --</option>
+                        @foreach (var variety in (IEnumerable<Microsoft.AspNetCore.Mvc.Rendering.SelectListItem>)ViewBag.VarietyList)
+                        {
+                            <option value="@variety.Value">@variety.Text</option>
+                        }
+                    </select>
+                </td>
+                <td><input name="Items[__index__].BasketCount" type="number" min="1" value="1" class="form-control" required /></td>
+                <td><input name="Items[__index__].BasketType" class="form-control" maxlength="50" /></td>
+                <td><input name="Items[__index__].HarvestMethod" class="form-control" maxlength="50" /></td>
+                <td><span class="text-muted">بدون قبض</span> <button type="button" class="btn btn-outline-danger btn-sm remove-farm-item">حذف</button></td>
+            </tr>
+        </template>
         <small class="text-muted">ردیفی که قبض باسکول دارد از این فرم قابل حذف نیست؛ برای حفظ سوابق توزین، حذف آن در سرور نیز مسدود شده است.</small>
 
                 <div class="section-title">🚛 حمل و مقصد</div>
@@ -283,4 +313,32 @@
         var netInput = document.getElementById('newNetWeight');
         netInput.value = (gross > empty) ? (gross - empty) : '';
     }
+</script>
+<script>
+(function () {
+    const body = document.querySelector('#farmItemTemplate')?.previousElementSibling?.querySelector('tbody') || document.querySelector('#farmItemTemplate')?.parentElement?.querySelector('tbody');
+    const template = document.getElementById('farmItemTemplate');
+    const add = document.getElementById('addFarmItem');
+    if (!body || !template) return;
+    let nextIndex = body.querySelectorAll('tr').length;
+    function renumber() {
+        body.querySelectorAll('tr').forEach((row, index) => {
+            row.querySelectorAll('[name]').forEach(input => {
+                input.name = input.name.replace(/Items\\[\\d+\\]/, 'Items[' + index + ']');
+            });
+        });
+        nextIndex = body.querySelectorAll('tr').length;
+    }
+    add?.addEventListener('click', () => {
+        const html = template.innerHTML.replaceAll('__index__', String(nextIndex++));
+        body.insertAdjacentHTML('beforeend', html);
+    });
+    body.addEventListener('click', event => {
+        const button = event.target.closest('.remove-farm-item');
+        if (!button) return;
+        if (body.querySelectorAll('tr').length <= 1) { alert('حداقل یک ردیف باید باقی بماند.'); return; }
+        button.closest('tr').remove();
+        renumber();
+    });
+})();
 </script>
