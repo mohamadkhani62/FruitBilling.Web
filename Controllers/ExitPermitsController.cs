@@ -1255,7 +1255,8 @@ namespace FruitBilling.Web.Controllers
             {
                 try
                 {
-                    using var annotatedWorkbook = new XLWorkbook(new MemoryStream(originalFileBytes));
+                    using var annotatedStream = new MemoryStream(originalFileBytes);
+                    using var annotatedWorkbook = new XLWorkbook(annotatedStream);
                     var annotatedBytes = BuildAnnotatedWorkbook(annotatedWorkbook, reports);
                     var token = Guid.NewGuid().ToString("N");
                     _memoryCache.Set("FarmExitImport:" + token, annotatedBytes, TimeSpan.FromMinutes(20));
