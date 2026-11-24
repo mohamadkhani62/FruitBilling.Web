@@ -1196,12 +1196,23 @@ namespace FruitBilling.Web.Controllers
             ViewBag.Farms = new SelectList(await _db.Farms.ToListAsync(), "Id", "Name");
             ViewBag.Plots = new SelectList(await _db.Plots.Include(p => p.Farm).ToListAsync(), "Id", "Name");
 
-            var cycle = await _db.HarvestCycles.FirstOrDefaultAsync(c => c.Id == cycleId);
+            var cycle = await _db.HarvestCycles
+                .Include(c => c.HarvestCycleCategories)
+                .FirstOrDefaultAsync(c => c.Id == cycleId);
             var varietiesQuery = _db.ProductVarieties.Include(v => v.Product).AsQueryable();
 
-            if (cycle != null && cycle.CategoryId.HasValue)
+            if (cycle != null)
             {
-                varietiesQuery = varietiesQuery.Where(v => v.Product!.CategoryId == cycle.CategoryId);
+                var categoryIds = cycle.HarvestCycleCategories.Select(x => x.CategoryId).ToArray();
+                // پشتیبانی از دوره‌های قدیمی که هنوز فقط CategoryId دارند
+                if (categoryIds.Length == 0 && cycle.CategoryId.HasValue)
+                    categoryIds = new[] { cycle.CategoryId.Value };
+
+                if (categoryIds.Length > 0)
+                    varietiesQuery = varietiesQuery.Where(v => v.Product != null && v.Product.CategoryId.HasValue
+                        && categoryIds.Contains(v.Product.CategoryId.Value));
+                else if (cycle.CategoryId.HasValue)
+                    varietiesQuery = varietiesQuery.Where(v => v.Product!.CategoryId == cycle.CategoryId);
             }
 
             var varietiesList = await varietiesQuery
