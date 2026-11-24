@@ -1699,7 +1699,10 @@ namespace FruitBilling.Web.Controllers
                     continue;
 
                 item.SequenceNumber = sequence;
-                item.IsLegacyFormat = isLegacyFormat || (isNewFormat && string.IsNullOrWhiteSpace(varietyName) && sequence.HasValue);
+                // قالب ۲۰ ستونی فقط وقتی به‌صورت قدیمی تفسیر می‌شود که کل تب
+                // خروجی قدیمیِ بدون ستون رقم باشد؛ خالی بودن رقم در یک ردیف منفرد
+                // نباید آن ردیف را بی‌صدا به قبض‌های سطح برگه تبدیل کند.
+                item.IsLegacyFormat = isLegacyFormat;
                 item.PermitNumber = permitNumber;
                 item.Date = date;
                 item.FarmName = farmName;
@@ -1720,6 +1723,24 @@ namespace FruitBilling.Web.Controllers
                 item.GrossWeight = grossW ?? 0;
                 item.NetWeight = netW;
                 rows.Add(item);
+            }
+
+            if (isNewFormat && rows.Count > 0)
+            {
+                bool allRowsAreOldNoVarietyExport = rows.All(x =>
+                    string.IsNullOrWhiteSpace(x.VarietyName) && x.SequenceNumber.HasValue);
+
+                if (allRowsAreOldNoVarietyExport)
+                {
+                    // سازگاری با خروجی‌های ۲۰ ستونی قدیمی که هنوز ستون رقم نداشتند.
+                    foreach (var row in rows)
+                        row.IsLegacyFormat = true;
+                }
+                else
+                {
+                    foreach (var row in rows.Where(x => string.IsNullOrWhiteSpace(x.VarietyName)))
+                        rep.AddError($"ردیف {row.RowNumber}: در قالب جدید ۲۰ ستونی، ستون «رقم» الزامی است؛ برای داده‌های قدیمی از قالب ۱۶ ستونی استفاده کنید.");
+                }
             }
 
             if (!rep.HasErrors && rows.Count == 0)
