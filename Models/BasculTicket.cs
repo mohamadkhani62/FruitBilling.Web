@@ -12,6 +12,14 @@ namespace FruitBilling.Web.Models
         [ForeignKey("FruitExitPermitId")]
         public FruitExitPermit? FruitExitPermit { get; set; }
 
+        // در ساختار جدید، هر قبض به یک ردیف محصول/رقم تعلق دارد.
+        public int? FruitExitPermitItemId { get; set; }
+        [ForeignKey(nameof(FruitExitPermitItemId))]
+        public FruitExitPermitItem? FruitExitPermitItem { get; set; }
+
+        [Display(Name = "تعداد سبد قبض")]
+        public int? BasketCount { get; set; }
+
         [Display(Name = "شماره قبض باسکول")]
         [StringLength(30)]
         public string? TicketNo { get; set; }
