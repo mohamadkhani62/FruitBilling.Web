@@ -76,10 +76,7 @@
                 <label asp-for="Date" class="form-label"></label>
                 <input asp-for="Date" class="form-control @(perms.GetValueOrDefault("Date") ? "" : "readonly-field")" readonly="@(!perms.GetValueOrDefault("Date"))" />
             </div>
-            <div class="col-md-4 mb-3">
-                <label asp-for="BasketCount" class="form-label"></label>
-                <input asp-for="BasketCount" class="form-control @(perms.GetValueOrDefault("BasketCount") ? "" : "readonly-field")" readonly="@(!perms.GetValueOrDefault("BasketCount"))" type="number" />
-            </div>
+
         </div>
 
         <div class="section-title">🍊 رقم و درجه‌بندی</div>
