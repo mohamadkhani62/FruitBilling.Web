@@ -152,7 +152,33 @@
             }
         </div>
 
-        <div class="section-title">🚛 حمل و مقصد</div>
+        <div class="section-title">🍊 ردیف‌های محصول و رقم</div>
+        <div class="table-responsive">
+            <table class="table table-bordered align-middle text-center">
+                <thead class="table-light"><tr><th>رقم</th><th>تعداد سبد</th><th>نوع سبد</th><th>روش برداشت</th><th>قبض‌های ثبت‌شده</th></tr></thead>
+                <tbody>
+                @for (var i = 0; i < (Model.Items?.Count ?? 0); i++)
+                {
+                    <tr>
+                        <td>
+                            <input type="hidden" asp-for="Items[i].Id" />
+                            <select asp-for="Items[i].VarietyId" asp-items="ViewBag.VarietyList" class="form-select" disabled="@(!canEditProduct)">
+                                <option value="">-- انتخاب محصول - رقم --</option>
+                            </select>
+                            @if (!canEditProduct) { <input type="hidden" asp-for="Items[i].VarietyId" /> }
+                        </td>
+                        <td><input asp-for="Items[i].BasketCount" type="number" min="1" class="form-control" readonly="@(!canEditBasketCount)" /></td>
+                        <td><input asp-for="Items[i].BasketType" class="form-control" readonly="@(!canEditBasketType)" /></td>
+                        <td><input asp-for="Items[i].HarvestMethod" class="form-control" readonly="@(!canEditHarvest)" /></td>
+                        <td><span class="badge bg-secondary">@(Model.Items[i].BasculTickets?.Count ?? 0) قبض</span></td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+        <small class="text-muted">ردیفی که قبض باسکول دارد از این فرم قابل حذف نیست؛ برای حفظ سوابق توزین، حذف آن در سرور نیز مسدود شده است.</small>
+
+                <div class="section-title">🚛 حمل و مقصد</div>
         <div class="row">
             <div class="col-md-3 mb-3">
                 <label asp-for="Destination" class="form-label">مقصد</label>
