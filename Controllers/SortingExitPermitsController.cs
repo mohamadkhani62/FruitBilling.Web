@@ -930,9 +930,16 @@ namespace FruitBilling.Web.Controllers
                 .Include(p => p.BasculTickets).FirstOrDefaultAsync(p => p.Id == id);
             if (permit == null) return NotFound();
 
-            // ۴. بررسی وضعیت و اعمال تأیید
+            // ۴. بررسی وضعیت و اعتبارسنجی مجدد اطلاعات باسکول پیش از تأیید
             if (permit.Status == "توزین شده")
             {
+                var validationError = ValidatePermitForSalesApproval(permit);
+                if (validationError != null)
+                {
+                    TempData["Warning"] = $"این برگه قابل تأیید نیست: {validationError}";
+                    return RedirectToAction(nameof(Index), new { cycleId = permit.HarvestCycleId ?? 0, focusId = permit.Id });
+                }
+
                 permit.Status = "تأیید فروش";
                 string approvalNote = $"تأیید فروش در {DateTime.Now:yyyy/MM/dd HH:mm} توسط {User.Identity?.Name}";
                 permit.Description = string.IsNullOrWhiteSpace(permit.Description)
@@ -1772,7 +1779,10 @@ namespace FruitBilling.Web.Controllers
             if (!string.IsNullOrWhiteSpace(toDate))
                 query = query.Where(p => string.Compare(p.Date, toDate) <= 0);
 
-            var permits = await query.ToListAsync();
+            var permits = await query
+                .Include(p => p.Items).ThenInclude(x => x.BasculTickets)
+                .Include(p => p.BasculTickets)
+                .ToListAsync();
 
             if (!permits.Any())
             {
@@ -1780,10 +1790,28 @@ namespace FruitBilling.Web.Controllers
                 return RedirectToAction(nameof(Index), new { cycleId = cycleId });
             }
 
-            // 🆕 تأیید همه
-            string approvalNote = $"✅ تأیید گروهی در {DateTime.Now:yyyy/MM/dd HH:mm} توسط {User.Identity?.Name}";
-
+            // فقط برگه‌هایی تأیید می‌شوند که اعتبار قبض‌ها و مجموع سبدهای آن‌ها تأیید شود.
+            var validPermits = new List<SortingExitPermit>();
+            var invalidPermits = new List<(int Id, string Reason)>();
             foreach (var permit in permits)
+            {
+                var validationError = ValidatePermitForSalesApproval(permit);
+                if (validationError == null)
+                    validPermits.Add(permit);
+                else
+                    invalidPermits.Add((permit.Id, validationError));
+            }
+
+            if (validPermits.Count == 0)
+            {
+                var firstErrors = string.Join("؛ ", invalidPermits.Take(3)
+                    .Select(x => $"برگه {x.Id}: {x.Reason}"));
+                TempData["Warning"] = $"هیچ برگه‌ای تأیید نشد. {invalidPermits.Count} برگه نقص دارد. {firstErrors}";
+                return RedirectToAction(nameof(Index), new { cycleId = cycleId });
+            }
+
+            string approvalNote = $"✅ تأیید گروهی در {DateTime.Now:yyyy/MM/dd HH:mm} توسط {User.Identity?.Name}";
+            foreach (var permit in validPermits)
             {
                 permit.Status = "تأیید فروش";
                 permit.Description = string.IsNullOrWhiteSpace(permit.Description)
@@ -1793,8 +1821,89 @@ namespace FruitBilling.Web.Controllers
 
             await _db.SaveChangesAsync();
 
-            TempData["Msg"] = $"✅ {permits.Count} برگه با موفقیت تأیید شد.";
+            var resultMessage = $"✅ {validPermits.Count} برگه تأیید شد.";
+            if (invalidPermits.Count > 0)
+            {
+                var firstErrors = string.Join("؛ ", invalidPermits.Take(3)
+                    .Select(x => $"برگه {x.Id}: {x.Reason}"));
+                resultMessage += $" {invalidPermits.Count} برگه به دلیل نقص تأیید نشد: {firstErrors}";
+            }
+            TempData["Msg"] = resultMessage;
             return RedirectToAction(nameof(Index), new { cycleId = cycleId });
+        }
+
+        // اعتبارسنجی مشترک برگه‌های جدید و قدیمی پیش از تأیید فروش
+        private static string? ValidatePermitForSalesApproval(SortingExitPermit permit)
+        {
+            if (permit.BasketCount is null or <= 0)
+                return "تعداد کل سبد برگه باید بیشتر از صفر باشد.";
+
+            if (permit.Items != null && permit.Items.Count > 0)
+            {
+                if (permit.Items.Any(item => item.BasketCount <= 0))
+                    return "تعداد سبد یکی از ردیف‌های رقم/درجه معتبر نیست.";
+
+                var itemBasketTotal = permit.Items.Sum(item => item.BasketCount);
+                if (itemBasketTotal != permit.BasketCount.Value)
+                    return $"مجموع سبد ردیف‌ها ({itemBasketTotal}) با تعداد سبد برگه ({permit.BasketCount}) برابر نیست.";
+
+                foreach (var item in permit.Items)
+                {
+                    var tickets = item.BasculTickets ?? new List<SortingBasculTicket>();
+                    if (tickets.Count == 0)
+                        return $"برای ردیف «{item.Grade}» هیچ قبض باسکولی ثبت نشده است.";
+
+                    if (tickets.Any(ticket => string.IsNullOrWhiteSpace(ticket.TicketNo)
+                        || ticket.TicketNo.Trim().Length > 30))
+                        return $"شماره قبض در ردیف «{item.Grade}» خالی یا نامعتبر است.";
+
+                    if (tickets.Any(ticket => ticket.BasketCount is null or <= 0))
+                        return $"تعداد سبد یکی از قبض‌های ردیف «{item.Grade}» معتبر نیست.";
+
+                    if (tickets.Any(ticket => ticket.EmptyWeight < 0 || ticket.GrossWeight <= ticket.EmptyWeight))
+                        return $"وزن خالی/پر یکی از قبض‌های ردیف «{item.Grade}» نامعتبر است.";
+
+                    if (tickets.Any(ticket => ticket.NetWeight != ticket.GrossWeight - ticket.EmptyWeight))
+                        return $"وزن خالص یکی از قبض‌های ردیف «{item.Grade}» با اختلاف وزن پر و خالی مطابقت ندارد.";
+
+                    var ticketBasketTotal = tickets.Sum(ticket => ticket.BasketCount!.Value);
+                    if (ticketBasketTotal != item.BasketCount)
+                        return $"مجموع سبد قبض‌های ردیف «{item.Grade}» ({ticketBasketTotal}) با تعداد سبد ردیف ({item.BasketCount}) برابر نیست.";
+                }
+
+                // قبض‌های متصل به والد نباید خارج از ردیف‌های این برگه باشند.
+                if (permit.BasculTickets != null && permit.BasculTickets.Count > 0)
+                    return "برگه جدید دارای قبض قدیمیِ بدون اتصال به ردیف است؛ ابتدا اطلاعات باسکول را اصلاح کنید.";
+
+                return null;
+            }
+
+            // سازگاری با برگه‌های قدیمی که تعداد سبد هر قبض در آن‌ها ذخیره نشده است.
+            var legacyTickets = permit.BasculTickets ?? new List<SortingBasculTicket>();
+            if (legacyTickets.Count == 0)
+                return "هیچ قبض باسکولی برای این برگه ثبت نشده است.";
+
+            if (legacyTickets.Any(ticket => string.IsNullOrWhiteSpace(ticket.TicketNo)
+                || ticket.TicketNo.Trim().Length > 30))
+                return "شماره یکی از قبض‌های باسکول خالی یا نامعتبر است.";
+
+            if (legacyTickets.Any(ticket => ticket.EmptyWeight < 0 || ticket.GrossWeight <= ticket.EmptyWeight))
+                return "وزن خالی/پر یکی از قبض‌های باسکول نامعتبر است.";
+
+            if (legacyTickets.Any(ticket => ticket.NetWeight != ticket.GrossWeight - ticket.EmptyWeight))
+                return "وزن خالص یکی از قبض‌ها با اختلاف وزن پر و خالی مطابقت ندارد.";
+
+            var hasTicketBasketCounts = legacyTickets.Any(ticket => ticket.BasketCount.HasValue);
+            if (hasTicketBasketCounts)
+            {
+                if (legacyTickets.Any(ticket => ticket.BasketCount is null or <= 0))
+                    return "تعداد سبد یکی از قبض‌های قدیمی ناقص است.";
+                var legacyBasketTotal = legacyTickets.Sum(ticket => ticket.BasketCount!.Value);
+                if (legacyBasketTotal != permit.BasketCount.Value)
+                    return $"مجموع سبد قبض‌ها ({legacyBasketTotal}) با تعداد سبد برگه ({permit.BasketCount}) برابر نیست.";
+            }
+
+            return null;
         }
 
         // ==========================================
