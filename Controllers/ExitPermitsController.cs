@@ -185,6 +185,8 @@ namespace FruitBilling.Web.Controllers
             }
 
             await LoadDropdownsForCycle(permit.HarvestCycleId ?? 0);
+            ViewBag.Farms = new SelectList(await _db.Farms.AsNoTracking().OrderBy(f => f.Name).ToListAsync(), "Id", "Name", permit.FarmId);
+            ViewBag.Plots = new SelectList(await _db.Plots.AsNoTracking().OrderBy(p => p.Name).ToListAsync(), "Id", "Name", permit.PlotId);
 
             ViewBag.ReturnCycleId = cycleId ?? permit.HarvestCycleId;
             ViewBag.ReturnFocusId = id;
@@ -210,6 +212,29 @@ namespace FruitBilling.Web.Controllers
             }
 
             var perms = await _permissionService.GetEditableFieldsAsync(userId!, "ExitPermits", permit);
+
+            // اعتبارسنجی مزرعه و قطعه در سمت سرور؛ قطعه باید متعلق به مزرعه انتخاب‌شده باشد.
+            int? targetFarmId = perms.GetValueOrDefault("FarmId") ? model.FarmId : permit.FarmId;
+            int? targetPlotId = perms.GetValueOrDefault("PlotId") ? model.PlotId : permit.PlotId;
+
+            if (targetFarmId.HasValue &&
+                !await _db.Farms.AnyAsync(f => f.Id == targetFarmId.Value))
+                ModelState.AddModelError(nameof(model.FarmId), "مزرعه انتخاب‌شده معتبر نیست.");
+
+            if (targetPlotId.HasValue &&
+                (!targetFarmId.HasValue ||
+                 !await _db.Plots.AnyAsync(p => p.Id == targetPlotId.Value && p.FarmId == targetFarmId.Value)))
+                ModelState.AddModelError(nameof(model.PlotId), "قطعه انتخاب‌شده متعلق به مزرعه انتخاب‌شده نیست.");
+
+            if (!ModelState.IsValid)
+            {
+                await LoadDropdownsForCycle(permit.HarvestCycleId ?? 0);
+                ViewBag.Farms = new SelectList(await _db.Farms.AsNoTracking().OrderBy(f => f.Name).ToListAsync(), "Id", "Name", targetFarmId);
+                ViewBag.Plots = new SelectList(await _db.Plots.AsNoTracking().OrderBy(p => p.Name).ToListAsync(), "Id", "Name", targetPlotId);
+                ViewBag.ReturnCycleId = cycleId ?? permit.HarvestCycleId;
+                ViewBag.ReturnFocusId = id;
+                return View(model);
+            }
 
             if (perms.GetValueOrDefault("PermitNumber")) permit.PermitNumber = model.PermitNumber;
             if (perms.GetValueOrDefault("Date")) permit.Date = model.Date;
