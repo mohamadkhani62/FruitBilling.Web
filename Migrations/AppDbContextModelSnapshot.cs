@@ -30,6 +30,9 @@ namespace FruitBilling.Web.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<int?>("BasketCount")
+                        .HasColumnType("int");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
@@ -37,6 +40,9 @@ namespace FruitBilling.Web.Migrations
                         .HasColumnType("int");
 
                     b.Property<int>("FruitExitPermitId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("FruitExitPermitItemId")
                         .HasColumnType("int");
 
                     b.Property<int>("GrossWeight")
@@ -52,6 +58,8 @@ namespace FruitBilling.Web.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("FruitExitPermitId");
+
+                    b.HasIndex("FruitExitPermitItemId");
 
                     b.ToTable("BasculTickets");
                 });
@@ -237,6 +245,40 @@ namespace FruitBilling.Web.Migrations
                     b.ToTable("FruitExitPermits");
                 });
 
+            modelBuilder.Entity("FruitBilling.Web.Models.FruitExitPermitItem", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("BasketCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("BasketType")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("FruitExitPermitId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("HarvestMethod")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("VarietyId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FruitExitPermitId");
+
+                    b.HasIndex("VarietyId");
+
+                    b.ToTable("FruitExitPermitItems");
+                });
+
             modelBuilder.Entity("FruitBilling.Web.Models.HarvestCycle", b =>
                 {
                     b.Property<int>("Id")
@@ -275,6 +317,21 @@ namespace FruitBilling.Web.Migrations
                     b.HasIndex("CategoryId");
 
                     b.ToTable("HarvestCycles");
+                });
+
+            modelBuilder.Entity("FruitBilling.Web.Models.HarvestCycleCategory", b =>
+                {
+                    b.Property<int>("HarvestCycleId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("CategoryId")
+                        .HasColumnType("int");
+
+                    b.HasKey("HarvestCycleId", "CategoryId");
+
+                    b.HasIndex("CategoryId");
+
+                    b.ToTable("HarvestCycleCategories");
                 });
 
             modelBuilder.Entity("FruitBilling.Web.Models.Plot", b =>
@@ -493,6 +550,9 @@ namespace FruitBilling.Web.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<int?>("BasketCount")
+                        .HasColumnType("int");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
@@ -508,6 +568,9 @@ namespace FruitBilling.Web.Migrations
                     b.Property<int>("SortingExitPermitId")
                         .HasColumnType("int");
 
+                    b.Property<int?>("SortingExitPermitItemId")
+                        .HasColumnType("int");
+
                     b.Property<string>("TicketNo")
                         .HasMaxLength(30)
                         .HasColumnType("nvarchar(30)");
@@ -515,6 +578,8 @@ namespace FruitBilling.Web.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("SortingExitPermitId");
+
+                    b.HasIndex("SortingExitPermitItemId");
 
                     b.ToTable("SortingBasculTickets");
                 });
@@ -604,6 +669,37 @@ namespace FruitBilling.Web.Migrations
                     b.HasIndex("VarietyId");
 
                     b.ToTable("SortingExitPermits");
+                });
+
+            modelBuilder.Entity("FruitBilling.Web.Models.SortingExitPermitItem", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("BasketCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Grade")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("SortingExitPermitId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("VarietyId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SortingExitPermitId");
+
+                    b.HasIndex("VarietyId");
+
+                    b.ToTable("SortingExitPermitItems");
                 });
 
             modelBuilder.Entity("FruitBilling.Web.Models.Tree", b =>
@@ -986,7 +1082,14 @@ namespace FruitBilling.Web.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("FruitBilling.Web.Models.FruitExitPermitItem", "FruitExitPermitItem")
+                        .WithMany("BasculTickets")
+                        .HasForeignKey("FruitExitPermitItemId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
                     b.Navigation("FruitExitPermit");
+
+                    b.Navigation("FruitExitPermitItem");
                 });
 
             modelBuilder.Entity("FruitBilling.Web.Models.FruitExitPermit", b =>
@@ -1025,6 +1128,25 @@ namespace FruitBilling.Web.Migrations
                     b.Navigation("Variety");
                 });
 
+            modelBuilder.Entity("FruitBilling.Web.Models.FruitExitPermitItem", b =>
+                {
+                    b.HasOne("FruitBilling.Web.Models.FruitExitPermit", "FruitExitPermit")
+                        .WithMany("Items")
+                        .HasForeignKey("FruitExitPermitId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("FruitBilling.Web.Models.ProductVariety", "Variety")
+                        .WithMany()
+                        .HasForeignKey("VarietyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("FruitExitPermit");
+
+                    b.Navigation("Variety");
+                });
+
             modelBuilder.Entity("FruitBilling.Web.Models.HarvestCycle", b =>
                 {
                     b.HasOne("FruitBilling.Web.Models.Category", "Category")
@@ -1033,6 +1155,25 @@ namespace FruitBilling.Web.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Category");
+                });
+
+            modelBuilder.Entity("FruitBilling.Web.Models.HarvestCycleCategory", b =>
+                {
+                    b.HasOne("FruitBilling.Web.Models.Category", "Category")
+                        .WithMany()
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FruitBilling.Web.Models.HarvestCycle", "HarvestCycle")
+                        .WithMany("HarvestCycleCategories")
+                        .HasForeignKey("HarvestCycleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Category");
+
+                    b.Navigation("HarvestCycle");
                 });
 
             modelBuilder.Entity("FruitBilling.Web.Models.Plot", b =>
@@ -1103,7 +1244,14 @@ namespace FruitBilling.Web.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("FruitBilling.Web.Models.SortingExitPermitItem", "SortingExitPermitItem")
+                        .WithMany("BasculTickets")
+                        .HasForeignKey("SortingExitPermitItemId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
                     b.Navigation("SortingExitPermit");
+
+                    b.Navigation("SortingExitPermitItem");
                 });
 
             modelBuilder.Entity("FruitBilling.Web.Models.SortingExitPermit", b =>
@@ -1126,6 +1274,25 @@ namespace FruitBilling.Web.Migrations
                     b.Navigation("HarvestCycle");
 
                     b.Navigation("Product");
+
+                    b.Navigation("Variety");
+                });
+
+            modelBuilder.Entity("FruitBilling.Web.Models.SortingExitPermitItem", b =>
+                {
+                    b.HasOne("FruitBilling.Web.Models.SortingExitPermit", "SortingExitPermit")
+                        .WithMany("Items")
+                        .HasForeignKey("SortingExitPermitId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("FruitBilling.Web.Models.ProductVariety", "Variety")
+                        .WithMany()
+                        .HasForeignKey("VarietyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("SortingExitPermit");
 
                     b.Navigation("Variety");
                 });
@@ -1255,11 +1422,20 @@ namespace FruitBilling.Web.Migrations
             modelBuilder.Entity("FruitBilling.Web.Models.FruitExitPermit", b =>
                 {
                     b.Navigation("BasculTickets");
+
+                    b.Navigation("Items");
+                });
+
+            modelBuilder.Entity("FruitBilling.Web.Models.FruitExitPermitItem", b =>
+                {
+                    b.Navigation("BasculTickets");
                 });
 
             modelBuilder.Entity("FruitBilling.Web.Models.HarvestCycle", b =>
                 {
                     b.Navigation("FruitExitPermits");
+
+                    b.Navigation("HarvestCycleCategories");
 
                     b.Navigation("SortingExitPermits");
                 });
@@ -1287,6 +1463,13 @@ namespace FruitBilling.Web.Migrations
                 });
 
             modelBuilder.Entity("FruitBilling.Web.Models.SortingExitPermit", b =>
+                {
+                    b.Navigation("BasculTickets");
+
+                    b.Navigation("Items");
+                });
+
+            modelBuilder.Entity("FruitBilling.Web.Models.SortingExitPermitItem", b =>
                 {
                     b.Navigation("BasculTickets");
                 });
