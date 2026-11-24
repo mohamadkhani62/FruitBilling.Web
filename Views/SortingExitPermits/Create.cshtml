@@ -82,27 +82,43 @@
             </div>
         </div>
 
-        <div class="section-title">🍊 محصول و درجه‌بندی</div>
+        <div class="section-title">🍊 رقم و درجه‌بندی</div>
+        <div class="col-12 mb-3">
+            <div id="sortingItems">
+                <div class="row border rounded p-3 mb-2 sorting-item">
+                    <div class="col-md-5 mb-2">
+                        <label class="form-label">محصول / رقم</label>
+                        <select name="items[0].VarietyId" class="form-select" required>
+                            <option value="">-- انتخاب محصول و رقم --</option>
+                            @foreach (var variety in (ViewBag.VarietyList as SelectList) ?? new SelectList(Enumerable.Empty<SelectListItem>()))
+                            {
+                                <option value="@variety.Value">@variety.Text</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <label class="form-label">درجه</label>
+                        <select name="items[0].Grade" class="form-select" required>
+                            <option value="">-- انتخاب درجه --</option>
+                            <option value="درجه یک">درجه یک</option>
+                            <option value="درجه دو">درجه دو</option>
+                            <option value="درهم">درهم</option>
+                            <option value="ضایعات">ضایعات</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2 mb-2">
+                        <label class="form-label">تعداد سبد</label>
+                        <input name="items[0].BasketCount" type="number" min="1" class="form-control" required />
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end mb-2">
+                        <button type="button" class="btn btn-outline-danger w-100 remove-sorting-item" onclick="removeSortingItem(this)" disabled>حذف</button>
+                    </div>
+                </div>
+            </div>
+            <button type="button" class="btn btn-outline-primary btn-sm" onclick="addSortingItem()">➕ افزودن رقم / درجه دیگر</button>
+            <div class="form-text">برای هر رقم و درجه، تعداد سبد جداگانه ثبت می‌شود.</div>
+        </div>
         <div class="row">
-            <div class="col-md-3 mb-3">
-                <label asp-for="ProductType" class="form-label"></label>
-                <input asp-for="ProductType" class="form-control @(perms.GetValueOrDefault("ProductType") ? "" : "readonly-field")" readonly="@(!perms.GetValueOrDefault("ProductType"))" list="productList" placeholder="انتخاب یا تایپ..." />
-                <datalist id="productList"><option value="مارس"></option><option value="والنسیا"></option><option value="نارنگی پرل"></option></datalist>
-            </div>
-            <div class="col-md-3 mb-3">
-                <label asp-for="Grade" class="form-label"></label>
-                <select asp-for="Grade" class="form-select @(perms.GetValueOrDefault("Grade") ? "" : "readonly-field")" disabled="@(!perms.GetValueOrDefault("Grade"))">
-                    <option value="">-- انتخاب درجه --</option>
-                    <option value="درجه یک">درجه یک</option>
-                    <option value="درجه دو">درجه دو</option>
-                    <option value="درهم">درهم</option>
-                    <option value="ضایعات">ضایعات</option>
-                </select>
-                @if (!perms.GetValueOrDefault("Grade"))
-                {
-                    <input type="hidden" asp-for="Grade" />
-                }
-            </div>
             <div class="col-md-3 mb-3">
                 <label asp-for="FarmName" class="form-label"></label>
                 <input asp-for="FarmName" class="form-control @(perms.GetValueOrDefault("FarmName") ? "" : "readonly-field")" readonly="@(!perms.GetValueOrDefault("FarmName"))" placeholder="نام مزرعه..." />
@@ -204,3 +220,31 @@
         sync();
     })();
 </script>
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script>
+        function refreshSortingItems() {
+            const rows = document.querySelectorAll('#sortingItems .sorting-item');
+            rows.forEach((row, index) => {
+                row.querySelector('select:nth-of-type(1)').name = `items[${index}].VarietyId`;
+                row.querySelector('select:nth-of-type(2)').name = `items[${index}].Grade`;
+                row.querySelector('input[type="number"]').name = `items[${index}].BasketCount`;
+                row.querySelector('.remove-sorting-item').disabled = rows.length === 1;
+            });
+        }
+        function addSortingItem() {
+            const first = document.querySelector('#sortingItems .sorting-item');
+            const clone = first.cloneNode(true);
+            clone.querySelectorAll('select').forEach(select => select.selectedIndex = 0);
+            clone.querySelector('input[type="number"]').value = '';
+            document.getElementById('sortingItems').appendChild(clone);
+            refreshSortingItems();
+        }
+        function removeSortingItem(button) {
+            if (document.querySelectorAll('#sortingItems .sorting-item').length <= 1) return;
+            button.closest('.sorting-item').remove();
+            refreshSortingItems();
+        }
+        refreshSortingItems();
+    </script>
+}
