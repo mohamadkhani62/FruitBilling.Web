@@ -1,8 +1,16 @@
 ﻿@model List<FruitBilling.Web.Services.SheetImportReport>
 @{
     var reportController = ViewData["ReportController"] as string ?? "Home";
+    var isPreview = ViewData["IsImportPreview"] is bool preview && preview;
 }
 <hr />
+@if (isPreview)
+{
+    <div class="alert alert-info border-primary" role="status">
+        <b>🔎 پیش‌نمایش انجام شد؛ هیچ اطلاعاتی ذخیره نشده است.</b>
+        تب‌های سبز قابل ثبت هستند؛ تب‌های قرمز خطا دارند و باید اصلاح شوند. هشدارها و توضیحات با رنگ زرد یا آبی نمایش داده می‌شوند.
+    </div>
+}
 <h5>📑 گزارش ورود (به تفکیک تب)</h5>
 @foreach (var rep in Model)
 {
@@ -40,7 +48,14 @@
     {
         <div class="alert alert-success py-2 mb-2">
             <b>✅ تب «@rep.SheetName»</b> — دوره «@rep.CycleName»:
-            @rep.Permits برگه با @rep.Tickets قبض باسکول ثبت شد
+            @if (isPreview)
+            {
+                <span>@rep.Permits برگه با @rep.Tickets قبض باسکول آماده ثبت است.</span>
+            }
+            else
+            {
+                <span>@rep.Permits برگه با @rep.Tickets قبض باسکول ثبت شد.</span>
+            }
             @if (rep.Duplicates > 0) { <span>(@rep.Duplicates برگه‌ی تکراری نادیده گرفته شد)</span> }
             @if (rep.CycleId.HasValue)
             {
