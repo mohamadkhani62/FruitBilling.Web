@@ -487,16 +487,6 @@ namespace FruitBilling.Web.Controllers
             return await _permissionService.GetEditableFieldsAsync(userId, "SortingExitPermits", permit);
         }
 
-        private async Task<bool> CanManageBasculTicketsAsync(string userId, SortingExitPermit permit)
-        {
-            var perms = await GetTicketPermissionsAsync(userId, permit);
-            return perms != null &&
-                (perms.GetValueOrDefault("TicketNo_Sort") ||
-                 perms.GetValueOrDefault("BasketCount_Sort") ||
-                 perms.GetValueOrDefault("EmptyWeight_Sort") ||
-                 perms.GetValueOrDefault("GrossWeight_Sort"));
-        }
-
         // افزودن یا حذف قبض قدیمی یک عملیات ساختاری است و به مجوز همه‌ی فیلدهای اجباری قبض نیاز دارد.
         private async Task<bool> CanManageLegacyTicketStructureAsync(string userId, SortingExitPermit permit)
         {
@@ -667,7 +657,7 @@ namespace FruitBilling.Web.Controllers
                 var newTicket = new SortingBasculTicket
                 {
                     SortingExitPermitId = permitId,
-                    TicketNo = ticketNo,
+                    TicketNo = ticketNo.Trim(),
                     EmptyWeight = emptyWeight,
                     GrossWeight = grossWeight,
                     NetWeight = grossWeight - emptyWeight,
