@@ -136,22 +136,53 @@ namespace FruitBilling.Web.Controllers
                 model.PlotId = plot.Id;
             }
 
-            // استخراج محصول از رقم
-            if (model.VarietyId.HasValue)
-            {
-                var variety = await _db.ProductVarieties.Include(v => v.Product).FirstOrDefaultAsync(v => v.Id == model.VarietyId.Value);
-                if (variety != null)
-                {
-                    model.ProductId = variety.ProductId;
-                    model.ProductType = variety.Product?.Name;
-                }
-            }
+            // هر ردیف محصول/رقم در جزئیات جداگانه ذخیره می‌شود.
+            model.Items ??= new List<FruitExitPermitItem>();
+            model.Items = model.Items
+                .Where(x => x.VarietyId > 0 || x.BasketCount > 0)
+                .ToList();
+
+            if (model.Items.Count == 0)
+                ModelState.AddModelError("Items", "حداقل یک محصول/رقم به برگ خروج اضافه کنید.");
+
+            if (model.Items.Any(x => x.VarietyId <= 0 || x.BasketCount <= 0))
+                ModelState.AddModelError("Items", "برای هر ردیف، رقم و تعداد سبد معتبر وارد کنید.");
+
+            var cycleForItems = model.HarvestCycleId.HasValue
+                ? await _db.HarvestCycles.Include(c => c.HarvestCycleCategories)
+                    .FirstOrDefaultAsync(c => c.Id == model.HarvestCycleId.Value)
+                : null;
+            var allowedCategoryIds = cycleForItems?.HarvestCycleCategories.Select(x => x.CategoryId).ToArray()
+                ?? Array.Empty<int>();
+            if (allowedCategoryIds.Length == 0 && cycleForItems?.CategoryId is int legacyCategoryId)
+                allowedCategoryIds = new[] { legacyCategoryId };
+
+            var selectedVarietyIds = model.Items.Select(x => x.VarietyId).Distinct().ToArray();
+            var selectedVarieties = await _db.ProductVarieties.Include(v => v.Product)
+                .Where(v => selectedVarietyIds.Contains(v.Id)).ToListAsync();
+
+            if (selectedVarieties.Count != selectedVarietyIds.Length ||
+                selectedVarieties.Any(v => v.Product == null ||
+                    (allowedCategoryIds.Length > 0 && !allowedCategoryIds.Contains(v.Product.CategoryId ?? 0))))
+                ModelState.AddModelError("Items", "یکی از ارقام انتخاب‌شده متعلق به گونه‌های این دوره برداشت نیست.");
 
             if (!ModelState.IsValid)
             {
                 await LoadDropdownsForCycle(model.HarvestCycleId ?? 0);
                 return View(model);
             }
+
+            foreach (var item in model.Items)
+            {
+                item.HarvestMethod = model.HarvestMethod;
+                item.BasketType = model.BasketType;
+            }
+
+            var firstVariety = selectedVarieties.First(v => v.Id == model.Items[0].VarietyId);
+            model.VarietyId = firstVariety.Id;
+            model.ProductId = firstVariety.ProductId;
+            model.ProductType = firstVariety.Product?.Name;
+            model.BasketCount = model.Items.Sum(x => x.BasketCount);
 
             model.CreatedAt = DateTime.Now;
             _db.FruitExitPermits.Add(model);
