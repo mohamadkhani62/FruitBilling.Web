@@ -35,6 +35,9 @@ namespace FruitBilling.Web.Models
 
         public DateTime CreatedAt { get; set; } = DateTime.Now;
 
+        public List<HarvestCycleCategory> HarvestCycleCategories { get; set; } = new();
+
+        // رابطه قدیمی تک‌گونه برای سازگاری با داده‌ها و کدهای فعلی حفظ شده است.
         public List<FruitExitPermit> FruitExitPermits { get; set; } = new();
         public List<SortingExitPermit> SortingExitPermits { get; set; } = new();
     }
