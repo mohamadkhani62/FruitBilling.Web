@@ -56,6 +56,21 @@ jobs:
         if: github.event_name == 'push' && github.ref == 'refs/heads/feature/multi-product-exit-permits'
         run: dotnet build FruitBilling.Web.csproj --configuration Release --no-restore
 
+      - name: Generate idempotent database SQL script
+        if: github.event_name == 'push' && github.ref == 'refs/heads/feature/multi-product-exit-permits'
+        run: |
+          mkdir -p artifacts
+          dotnet-ef migrations script --idempotent --project FruitBilling.Web.csproj --output artifacts/FruitBillingDb.sql
+
+      - name: Upload database SQL script
+        if: github.event_name == 'push' && github.ref == 'refs/heads/feature/multi-product-exit-permits'
+        uses: actions/upload-artifact@v4
+        with:
+          name: FruitBillingDb-migration-script
+          path: artifacts/FruitBillingDb.sql
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Commit generated migration
         if: github.event_name == 'push' && github.ref == 'refs/heads/feature/multi-product-exit-permits'
         shell: bash
