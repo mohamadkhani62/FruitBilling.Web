@@ -140,14 +140,31 @@
                 </datalist>
             </div>
 
-            <!-- 🆕 فقط یک Dropdown برای انتخاب رقم -->
-            <div class="col-md-4 mb-3">
-                <label asp-for="VarietyId" class="form-label fw-bold text-primary">محصول / رقم *</label>
-                <select asp-for="VarietyId" asp-items="ViewBag.VarietyList" class="form-select @(canEditProduct ? "border-primary" : "readonly-field")"
-                        disabled="@(!canEditProduct)" required>
-                    <option value="">-- انتخاب رقم (مثلاً پرتقال - والنسیا) --</option>
-                </select>
-                <span asp-validation-for="VarietyId" class="text-danger small"></span>
+            <div class="col-12 mb-3">
+                <label class="form-label fw-bold text-primary">محصول‌ها و رقم‌های این برگ خروج</label>
+                <div id="permitItems">
+                    <div class="row border rounded p-3 mb-2 permit-item">
+                        <div class="col-md-7 mb-2">
+                            <label class="form-label">محصول / رقم</label>
+                            <select name="Items[0].VarietyId" class="form-select" required>
+                                <option value="">-- انتخاب محصول و رقم --</option>
+                                @foreach (var variety in (ViewBag.VarietyList as SelectList) ?? new SelectList(Enumerable.Empty<SelectListItem>()))
+                                {
+                                    <option value="@variety.Value">@variety.Text</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-3 mb-2">
+                            <label class="form-label">تعداد سبد این رقم</label>
+                            <input name="Items[0].BasketCount" type="number" min="1" class="form-control" required />
+                        </div>
+                        <div class="col-md-2 d-flex align-items-end mb-2">
+                            <button type="button" class="btn btn-outline-danger w-100 remove-permit-item" onclick="removePermitItem(this)" disabled>حذف</button>
+                        </div>
+                    </div>
+                </div>
+                <button type="button" class="btn btn-outline-primary btn-sm" onclick="addPermitItem()">➕ افزودن محصول / رقم دیگر</button>
+                <div class="form-text">هر محصول/رقم یک ردیف مستقل دارد؛ قبض‌های باسکول در مرحله توزین به همین ردیف‌ها متصل می‌شوند.</div>
             </div>
 
             <div class="col-md-4 mb-3">
@@ -177,10 +194,7 @@
         </div>
 
         <!-- فیلدهای مخفی برای ارسال مقادیر غیرفعال -->
-        @if (!canEditProduct)
-        {
-            <input type="hidden" asp-for="VarietyId" />
-        }
+
 
         <!-- اطلاعات حمل و مقصد -->
         <div class="section-title">🚛 حمل و مقصد</div>
@@ -219,3 +233,32 @@
         </div>
     </form>
 </div>
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script>
+        let permitItemIndex = 1;
+        function refreshPermitItemRows() {
+            const rows = document.querySelectorAll('#permitItems .permit-item');
+            rows.forEach((row, index) => {
+                row.querySelector('select').name = `Items[${index}].VarietyId`;
+                row.querySelector('input[type="number"]').name = `Items[${index}].BasketCount`;
+                row.querySelector('.remove-permit-item').disabled = rows.length === 1;
+            });
+        }
+        function addPermitItem() {
+            const first = document.querySelector('#permitItems .permit-item');
+            const clone = first.cloneNode(true);
+            clone.querySelector('select').selectedIndex = 0;
+            clone.querySelector('input[type="number"]').value = '';
+            document.getElementById('permitItems').appendChild(clone);
+            refreshPermitItemRows();
+        }
+        function removePermitItem(button) {
+            const rows = document.querySelectorAll('#permitItems .permit-item');
+            if (rows.length <= 1) return;
+            button.closest('.permit-item').remove();
+            refreshPermitItemRows();
+        }
+        refreshPermitItemRows();
+    </script>
+}
