@@ -1304,8 +1304,12 @@ namespace FruitBilling.Web.Controllers
                             }
                             else
                             {
-                                var itemGroups = permitRows.GroupBy(x =>
-                                    Norm(x.ProductType) + "|" + Norm(x.VarietyName) + "|" + Norm(x.Grade)).ToList();
+                                // کلید ترکیبی به‌صورت tuple نگهداری می‌شود تا وجود کاراکتر «|»
+                                // در نام محصول/رقم/درجه باعث ادغام اشتباه دو ردیف مستقل نشود.
+                                var itemGroups = permitRows.GroupBy(x => (
+                                    Product: Norm(x.ProductType),
+                                    Variety: Norm(x.VarietyName),
+                                    Grade: Norm(x.Grade))).ToList();
 
                                 foreach (var itemGroup in itemGroups)
                                 {
