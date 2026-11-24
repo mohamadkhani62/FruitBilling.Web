@@ -318,13 +318,32 @@ namespace FruitBilling.Web.Controllers
             var perms = await _permissionService.GetEditableFieldsAsync(userId!, "SortingExitPermits", permit);
             if (model.Items != null)
             {
-                var submitted = model.Items.Where(x => x.Id > 0 || x.VarietyId > 0 || x.BasketCount > 0 || !string.IsNullOrWhiteSpace(x.Grade)).ToList();
+                var indexedSubmitted = model.Items
+                    .Select((item, index) => (item, index))
+                    .Where(x => x.item.Id > 0 || x.item.VarietyId > 0 || x.item.BasketCount > 0 ||
+                        !string.IsNullOrWhiteSpace(x.item.Grade))
+                    .ToList();
+                var submitted = indexedSubmitted.Select(x => x.item).ToList();
+
                 if (submitted.Count == 0)
                     ModelState.AddModelError("Items", "حداقل یک ردیف رقم و درجه باید باقی بماند.");
-                if (submitted.GroupBy(x => x.Id).Any(g => g.Key > 0 && g.Count() > 1))
-                    ModelState.AddModelError("Items", "شناسه ردیف تکراری است.");
-                if (submitted.Any(x => x.VarietyId <= 0 || x.BasketCount <= 0 || string.IsNullOrWhiteSpace(x.Grade)))
-                    ModelState.AddModelError("Items", "برای هر ردیف، رقم، درجه و تعداد سبد معتبر وارد کنید.");
+
+                foreach (var entry in indexedSubmitted)
+                {
+                    if (entry.item.VarietyId <= 0)
+                        ModelState.AddModelError($"Items[{entry.index}].VarietyId", "رقم این ردیف را انتخاب کنید.");
+                    if (string.IsNullOrWhiteSpace(entry.item.Grade))
+                        ModelState.AddModelError($"Items[{entry.index}].Grade", "درجه این ردیف را انتخاب کنید.");
+                    if (entry.item.BasketCount <= 0)
+                        ModelState.AddModelError($"Items[{entry.index}].BasketCount", "تعداد سبد باید بیشتر از صفر باشد.");
+                }
+
+                foreach (var duplicateGroup in indexedSubmitted.Where(x => x.item.Id > 0)
+                    .GroupBy(x => x.item.Id).Where(group => group.Count() > 1))
+                {
+                    foreach (var entry in duplicateGroup)
+                        ModelState.AddModelError($"Items[{entry.index}].Id", "شناسه این ردیف تکراری است.");
+                }
 
                 var cycleIdForItems = User.IsInRole("Manager") && model.HarvestCycleId.HasValue
                     ? model.HarvestCycleId.Value : permit.HarvestCycleId ?? 0;
@@ -337,9 +356,16 @@ namespace FruitBilling.Web.Controllers
                 var varietyIds = submitted.Select(x => x.VarietyId).Where(x => x > 0).Distinct().ToArray();
                 var varieties = await _db.ProductVarieties.Include(v => v.Product)
                     .Where(v => varietyIds.Contains(v.Id)).ToListAsync();
-                if (varieties.Count != varietyIds.Length || varieties.Any(v => v.Product == null ||
-                    (categoryIds.Length > 0 && !categoryIds.Contains(v.Product.CategoryId ?? 0))))
-                    ModelState.AddModelError("Items", "یکی از ارقام انتخاب‌شده متعلق به گونه‌های این دوره برداشت نیست.");
+                var validVarietyIds = varieties
+                    .Where(v => v.Product != null &&
+                        (categoryIds.Length == 0 || categoryIds.Contains(v.Product.CategoryId ?? 0)))
+                    .Select(v => v.Id).ToHashSet();
+                foreach (var entry in indexedSubmitted)
+                {
+                    if (entry.item.VarietyId > 0 && !validVarietyIds.Contains(entry.item.VarietyId))
+                        ModelState.AddModelError($"Items[{entry.index}].VarietyId",
+                            "رقم انتخاب‌شده در اطلاعات پایه موجود نیست یا متعلق به گونه‌های این دوره برداشت نیست.");
+                }
 
                 var submittedIds = submitted.Where(x => x.Id > 0).Select(x => x.Id).ToHashSet();
                 var hasNewItems = submitted.Any(x => x.Id == 0);
@@ -348,29 +374,29 @@ namespace FruitBilling.Web.Controllers
                     && perms.GetValueOrDefault("Grade") && perms.GetValueOrDefault("BasketCount");
                 if ((hasNewItems || hasRemovedItems) && !canManageItemRows)
                     ModelState.AddModelError("Items", "برای افزودن یا حذف ردیف، مجوز ویرایش رقم، درجه و تعداد سبد لازم است.");
-                if (submittedIds.Any(x => permit.Items.All(dbItem => dbItem.Id != x)))
-                    ModelState.AddModelError("Items", "یک ردیف ارسالی متعلق به این برگ خروج نیست.");
+                foreach (var entry in indexedSubmitted.Where(x => x.item.Id > 0 &&
+                    permit.Items.All(dbItem => dbItem.Id != x.item.Id)))
+                    ModelState.AddModelError($"Items[{entry.index}].Id", "این ردیف متعلق به برگ خروج جاری نیست.");
 
                 // پس از ثبت قبض، تغییر رقم/درجه یا تعداد سبد ردیف باعث می‌شود
                 // قبض‌های موجود به محصول اشتباه منتسب شوند یا جمع سبدها ناسازگار شود.
-                foreach (var posted in submitted.Where(x => x.Id > 0))
+                foreach (var entry in indexedSubmitted.Where(x => x.item.Id > 0))
                 {
-                    var existingItem = permit.Items.FirstOrDefault(x => x.Id == posted.Id);
+                    var existingItem = permit.Items.FirstOrDefault(x => x.Id == entry.item.Id);
                     if (existingItem == null || !existingItem.BasculTickets.Any())
                         continue;
 
-                    if (posted.VarietyId != existingItem.VarietyId ||
-                        !string.Equals(posted.Grade?.Trim(), existingItem.Grade?.Trim(), StringComparison.Ordinal))
-                    {
-                        ModelState.AddModelError("Items",
-                            $"ردیف «{existingItem.Grade}» قبض باسکول دارد؛ تغییر رقم یا درجه آن تا زمان تعیین تکلیف قبض‌ها مجاز نیست.");
-                    }
+                    if (entry.item.VarietyId != existingItem.VarietyId)
+                        ModelState.AddModelError($"Items[{entry.index}].VarietyId",
+                            $"ردیف «{existingItem.Grade}» قبض باسکول دارد؛ تغییر رقم تا زمان تعیین تکلیف قبض‌ها مجاز نیست.");
 
-                    if (posted.BasketCount != existingItem.BasketCount)
-                    {
-                        ModelState.AddModelError("Items",
+                    if (!string.Equals(entry.item.Grade?.Trim(), existingItem.Grade?.Trim(), StringComparison.Ordinal))
+                        ModelState.AddModelError($"Items[{entry.index}].Grade",
+                            $"ردیف «{existingItem.Grade}» قبض باسکول دارد؛ تغییر درجه تا زمان تعیین تکلیف قبض‌ها مجاز نیست.");
+
+                    if (entry.item.BasketCount != existingItem.BasketCount)
+                        ModelState.AddModelError($"Items[{entry.index}].BasketCount",
                             $"ردیف «{existingItem.Grade}» قبض باسکول دارد؛ برای جلوگیری از مغایرت تعداد سبد قبض‌ها، ابتدا قبض‌ها را اصلاح کنید.");
-                    }
                 }
 
                 foreach (var removed in permit.Items.Where(x => !submittedIds.Contains(x.Id)))
