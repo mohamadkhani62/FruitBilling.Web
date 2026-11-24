@@ -293,7 +293,6 @@ namespace FruitBilling.Web.Controllers
                     ViewBag.Plots = new SelectList(await _db.Plots.AsNoTracking().OrderBy(p => p.Name).ToListAsync(), "Id", "Name", targetPlotId);
                     ViewBag.ReturnCycleId = cycleId ?? permit.HarvestCycleId;
                     ViewBag.ReturnFocusId = id;
-                    model.Items = permit.Items;
                     return View(model);
                 }
 
